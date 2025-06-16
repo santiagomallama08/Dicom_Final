@@ -7,18 +7,21 @@ from tkinter import filedialog, ttk, messagebox
 import pydicom
 import numpy as np
 from PIL import Image, ImageTk
-
 from modules.processing.segmentacion import segmentar_craneo, segmentar_craneo_desde_gui
 from modules.database.dao import get_or_create_archivo_dicom, insert_protesis_dimension
 
 class DICOMViewer:
-    def __init__(self, root):
+    def __init__(self, root, usuario_id):
         self.root = root
-        self.root.title("Visor DICOM para Prótesis Craneales")
-        self.dicom_path = None
+        self.usuario_id = usuario_id
+        self.root.title(f"Visor DICOM - Usuario ID: {usuario_id}")
+
+        self.dicom_paths = []
+        self.current_index = 0
         self.original_image = None
         self.zoom_level = 1.0
         self.rotation_angle = 0
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -43,11 +46,11 @@ class DICOMViewer:
             "height": 2,
         }
 
-        tk.Button(left_menu, text="📂 Abrir archivo DICOM", command=self.open_dicom, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="🧠 Segmentar cráneo", command=self.segmentar_craneo, **btn_style).pack(pady=5)
+        tk.Button(left_menu, text="📂 Cargar Carpeta DICOM", command=self.load_folder, **btn_style).pack(pady=5)
+        tk.Button(left_menu, text="🧠 Segmentar cráneo", command=self.segmentar_craneo_actual, **btn_style).pack(pady=5)
+        tk.Button(left_menu, text="📐 Obtener medidas", command=self.calcular_dimensiones, **btn_style).pack(pady=5)
         tk.Button(left_menu, text="🧩 Diseñar prótesis", command=self.disenar_protesis, **btn_style).pack(pady=5)
         tk.Button(left_menu, text="📐 Generar STL", command=self.exportar_stl, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="📏 Obtener medidas", command=self.calcular_dimensiones, **btn_style).pack(pady=5)
         tk.Button(left_menu, text="💰 Mostrar presupuesto", command=self.mostrar_presupuesto, **btn_style).pack(pady=5)
 
         viewer_frame = tk.Frame(main_frame)
@@ -69,10 +72,32 @@ class DICOMViewer:
                                     value=0, command=self.apply_transformations)
         self.rot_slider.grid(row=0, column=3, padx=5)
 
-    def open_dicom(self):
-        path = filedialog.askopenfilename(filetypes=[("DICOM files", "*.dcm")])
-        if not path:
+        tk.Label(controls_frame, text="Slice").grid(row=1, column=0, padx=5)
+        self.slice_slider = ttk.Scale(controls_frame, from_=0, to=0, orient="horizontal",
+                                      value=0, command=self.change_slice)
+        self.slice_slider.grid(row=1, column=1, columnspan=3, sticky="we", padx=5)
+
+    def load_folder(self):
+        folder = filedialog.askdirectory()
+        if not folder:
             return
+
+        self.dicom_paths = sorted([
+            os.path.join(folder, f) for f in os.listdir(folder)
+            if f.lower().endswith(".dcm")
+        ])
+        if not self.dicom_paths:
+            messagebox.showerror("Error", "No se encontraron archivos DICOM en la carpeta seleccionada.")
+            return
+
+        self.current_index = 0
+        self.slice_slider.config(to=len(self.dicom_paths) - 1)
+        self.load_dicom_image()
+
+    def load_dicom_image(self):
+        if not self.dicom_paths:
+            return
+        path = self.dicom_paths[self.current_index]
         self.dicom_path = path
         ds = pydicom.dcmread(path)
         arr = ds.pixel_array.astype(float)
@@ -89,6 +114,12 @@ class DICOMViewer:
         self.zoom_level = float(self.zoom_slider.get())
         self.rotation_angle = float(self.rot_slider.get())
         self.update_image()
+
+    def change_slice(self, val):
+        if not self.dicom_paths:
+            return
+        self.current_index = int(float(val))
+        self.load_dicom_image()
 
     def update_image(self):
         if self.original_image is None:
@@ -107,7 +138,7 @@ class DICOMViewer:
         x, y = (cw - nw) // 2, (ch - nh) // 2
         self.canvas.create_image(x, y, anchor=tk.NW, image=self.tk_img)
 
-    def segmentar_craneo(self):
+    def segmentar_craneo_actual(self):
         if not self.dicom_path:
             print("No hay imagen DICOM cargada.")
             return
@@ -131,19 +162,16 @@ class DICOMViewer:
             print("No hay imagen DICOM cargada.")
             return
 
-        # 1) Obtener dimensiones y ruta
         resultado = segmentar_craneo(self.dicom_path)
         if "error" in resultado:
             messagebox.showerror("Error en segmentación", resultado["error"])
             return
 
-        # 2) Mostrar popup
         segmentar_craneo_desde_gui(self.dicom_path)
 
-        # 3) Guardar en BD
         nombre = os.path.basename(self.dicom_path)
         ruta = self.dicom_path
-        sistema_id = 1  # Ajustar según tu entorno
+        sistema_id = 1  # ← Cambia según cómo manejes sesiones o sistema
 
         archivo_id = get_or_create_archivo_dicom(nombre, ruta, sistema_id)
         tipo_protesis = "Cráneo"
