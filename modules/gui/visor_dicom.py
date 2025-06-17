@@ -1,6 +1,7 @@
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
@@ -10,12 +11,15 @@ from PIL import Image, ImageTk
 from modules.processing.segmentacion import segmentar_craneo, segmentar_craneo_desde_gui
 from modules.database.dao import get_or_create_archivo_dicom, insert_protesis_dimension
 
+
 class DICOMViewer:
     def __init__(self, root, usuario_id):
         self.root = root
         self.usuario_id = usuario_id
         self.root.title(f"Visor DICOM - Usuario ID: {usuario_id}")
-
+        self.base_image = None  # Imagen sin brillo modificado
+        self.brightness = 0  # Nivel de brillo actual (puede ser -100 a +100)
+        self.mouse_y_start = None
         self.dicom_paths = []
         self.current_index = 0
         self.original_image = None
@@ -31,8 +35,13 @@ class DICOMViewer:
         left_menu = tk.Frame(main_frame, bg="#2c3e50", padx=15, pady=15)
         left_menu.pack(side=tk.LEFT, fill=tk.Y)
 
-        tk.Label(left_menu, text="🛠️ Herramientas", font=("Arial", 14, "bold"),
-                 bg="#2c3e50", fg="white").pack(pady=(0, 20))
+        tk.Label(
+            left_menu,
+            text="🛠️ Herramientas",
+            font=("Arial", 14, "bold"),
+            bg="#2c3e50",
+            fg="white",
+        ).pack(pady=(0, 20))
 
         btn_style = {
             "font": ("Arial", 10),
@@ -46,12 +55,39 @@ class DICOMViewer:
             "height": 2,
         }
 
-        tk.Button(left_menu, text="📂 Cargar Carpeta DICOM", command=self.load_folder, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="🧠 Segmentar cráneo", command=self.segmentar_craneo_actual, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="📐 Obtener medidas", command=self.calcular_dimensiones, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="🧩 Diseñar prótesis", command=self.disenar_protesis, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="📐 Generar STL", command=self.exportar_stl, **btn_style).pack(pady=5)
-        tk.Button(left_menu, text="💰 Mostrar presupuesto", command=self.mostrar_presupuesto, **btn_style).pack(pady=5)
+        tk.Button(
+            left_menu,
+            text="📂 Cargar Carpeta DICOM",
+            command=self.load_folder,
+            **btn_style,
+        ).pack(pady=5)
+        tk.Button(
+            left_menu,
+            text="🧠 Segmentar cráneo",
+            command=self.segmentar_craneo_actual,
+            **btn_style,
+        ).pack(pady=5)
+        tk.Button(
+            left_menu,
+            text="📐 Obtener medidas",
+            command=self.calcular_dimensiones,
+            **btn_style,
+        ).pack(pady=5)
+        tk.Button(
+            left_menu,
+            text="🧩 Diseñar prótesis",
+            command=self.disenar_protesis,
+            **btn_style,
+        ).pack(pady=5)
+        tk.Button(
+            left_menu, text="📐 Generar STL", command=self.exportar_stl, **btn_style
+        ).pack(pady=5)
+        tk.Button(
+            left_menu,
+            text="💰 Mostrar presupuesto",
+            command=self.mostrar_presupuesto,
+            **btn_style,
+        ).pack(pady=5)
 
         viewer_frame = tk.Frame(main_frame)
         viewer_frame.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
@@ -63,31 +99,57 @@ class DICOMViewer:
         controls_frame.pack(pady=10)
 
         tk.Label(controls_frame, text="Zoom").grid(row=0, column=0, padx=5)
-        self.zoom_slider = ttk.Scale(controls_frame, from_=0.5, to=2.0, orient="horizontal",
-                                     value=1.0, command=self.apply_transformations)
+        self.zoom_slider = ttk.Scale(
+            controls_frame,
+            from_=0.5,
+            to=2.0,
+            orient="horizontal",
+            value=1.0,
+            command=self.apply_transformations,
+        )
         self.zoom_slider.grid(row=0, column=1, padx=5)
 
         tk.Label(controls_frame, text="Rotación").grid(row=0, column=2, padx=5)
-        self.rot_slider = ttk.Scale(controls_frame, from_=-180, to=180, orient="horizontal",
-                                    value=0, command=self.apply_transformations)
+        self.rot_slider = ttk.Scale(
+            controls_frame,
+            from_=-180,
+            to=180,
+            orient="horizontal",
+            value=0,
+            command=self.apply_transformations,
+        )
         self.rot_slider.grid(row=0, column=3, padx=5)
 
         tk.Label(controls_frame, text="Slice").grid(row=1, column=0, padx=5)
-        self.slice_slider = ttk.Scale(controls_frame, from_=0, to=0, orient="horizontal",
-                                      value=0, command=self.change_slice)
+        self.slice_slider = ttk.Scale(
+            controls_frame,
+            from_=0,
+            to=0,
+            orient="horizontal",
+            value=0,
+            command=self.change_slice,
+        )
         self.slice_slider.grid(row=1, column=1, columnspan=3, sticky="we", padx=5)
+        # 🧠 Agregar interacción de brillo con clic + arrastre
+        self.canvas.bind("<Button-1>", self.start_brightness_drag)
+        self.canvas.bind("<B1-Motion>", self.adjust_brightness_drag)
 
     def load_folder(self):
         folder = filedialog.askdirectory()
         if not folder:
             return
 
-        self.dicom_paths = sorted([
-            os.path.join(folder, f) for f in os.listdir(folder)
-            if f.lower().endswith(".dcm")
-        ])
+        self.dicom_paths = sorted(
+            [
+                os.path.join(folder, f)
+                for f in os.listdir(folder)
+                if f.lower().endswith(".dcm")
+            ]
+        )
         if not self.dicom_paths:
-            messagebox.showerror("Error", "No se encontraron archivos DICOM en la carpeta seleccionada.")
+            messagebox.showerror(
+                "Error", "No se encontraron archivos DICOM en la carpeta seleccionada."
+            )
             return
 
         self.current_index = 0
@@ -109,6 +171,14 @@ class DICOMViewer:
         self.zoom_slider.set(1.0)
         self.rot_slider.set(0)
         self.update_image()
+        self.base_image = img  # Guarda la imagen base para ajustes de brillo
+        self.original_image = img
+        self.zoom_level = 1.0
+        self.rotation_angle = 0
+        self.brightness = 0
+        self.zoom_slider.set(1.0)
+        self.rot_slider.set(0)
+        self.update_image()
 
     def apply_transformations(self, _=None):
         self.zoom_level = float(self.zoom_slider.get())
@@ -126,7 +196,9 @@ class DICOMViewer:
             return
         w, h = self.original_image.size
         cx, cy = w // 2, h // 2
-        rotated = self.original_image.rotate(self.rotation_angle, resample=Image.BICUBIC, center=(cx, cy))
+        rotated = self.original_image.rotate(
+            self.rotation_angle, resample=Image.BICUBIC, center=(cx, cy)
+        )
         nw, nh = int(w * self.zoom_level), int(h * self.zoom_level)
         resized = rotated.resize((nw, nh), resample=Image.BICUBIC)
         self.tk_img = ImageTk.PhotoImage(resized)
@@ -175,11 +247,35 @@ class DICOMViewer:
 
         archivo_id = get_or_create_archivo_dicom(nombre, ruta, sistema_id)
         tipo_protesis = "Cráneo"
-        ok = insert_protesis_dimension(archivo_id, tipo_protesis, resultado["dimensiones"])
+        ok = insert_protesis_dimension(
+            archivo_id, tipo_protesis, resultado["dimensiones"]
+        )
         if ok:
             print("✅ Dimensiones guardadas en BD.")
         else:
             print("ℹ️ Registro ya existente en BD.")
+
+    def start_brightness_drag(self, event):
+        self.mouse_y_start = event.y
+
+    def adjust_brightness_drag(self, event):
+        if self.mouse_y_start is None or self.base_image is None:
+            return
+
+        delta = event.y - self.mouse_y_start
+        self.mouse_y_start = event.y
+        self.brightness = max(-100, min(100, self.brightness + delta))
+        self.apply_brightness()
+
+    def apply_brightness(self):
+        if self.base_image is None:
+            return
+
+        arr = np.array(self.base_image).astype(np.int16)
+        arr = arr + self.brightness
+        arr = np.clip(arr, 0, 255).astype(np.uint8)
+        self.original_image = Image.fromarray(arr)
+        self.update_image()
 
     def disenar_protesis(self):
         print("Diseño de prótesis en proceso...")

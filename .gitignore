@@ -22,6 +22,7 @@ Thumbs.db
 build/
 dist/
 
+
 # Configuración de IDEs
 .vscode/
 .idea/
