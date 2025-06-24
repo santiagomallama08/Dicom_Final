@@ -26,3 +26,13 @@ dist/
 # Configuración de IDEs
 .vscode/
 .idea/
+
+# Ignorar todos los archivos dentro de outputs/
+outputs/*
+
+# Ignorar carpeta de imágenes generadas
+static/series/
+
+#Ignorea los uploads
+uploads
+ 
