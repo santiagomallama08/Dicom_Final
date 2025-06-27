@@ -31,8 +31,13 @@ dist/
 outputs/*
 
 # Ignorar carpeta de imágenes generadas
-static/series/
+static/segmentations
+
+# Ignorar carpeta de imágenes generadas
+api/static/series/
+
 
 #Ignorea los uploads
 uploads
  
+

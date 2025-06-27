@@ -117,10 +117,10 @@ def obtener_mapping_de_serie(
 
 @router.post("/segmentar-desde-mapping/")
 async def segmentar_desde_mapping(
-    session_id: str = Form(...), image_name: str = Form(...)
+    session_id: str = Form(...),
+    image_name: str = Form(...)
 ):
     try:
-        # Ruta a la carpeta de la sesión
         base_dir = os.path.join("api", "static", "series", session_id)
         mapping_path = os.path.join(base_dir, "mapping.json")
 
@@ -133,20 +133,18 @@ async def segmentar_desde_mapping(
         if image_name not in mapping:
             raise ValueError(f"No se encontró {image_name} en el mapping")
 
-        dicom_relative_path = mapping[image_name]
+        # ✅ Obtener datos del mapping
+        dicom_info = mapping[image_name]
+        dicom_filename = dicom_info["dicom_name"]
+        archivodicomid = dicom_info["archivodicomid"]
 
-        # ✅ CORRECCIÓN: para manejar rutas como series-00001/image-00010.dcm
-        dicom_path = os.path.join(base_dir, *dicom_relative_path.split("/"))
-
+        dicom_path = os.path.join(base_dir, dicom_filename)
         if not os.path.exists(dicom_path):
-            raise FileNotFoundError(
-                f"No se encontró el archivo DICOM: {dicom_relative_path}"
-            )
+            raise FileNotFoundError(f"No se encontró el archivo DICOM: {dicom_filename}")
 
-        # Importar servicio de segmentación
+        # ✅ Llamar la función con el ID real
         from ..services.segmentation_services import segmentar_dicom
-
-        resultado = segmentar_dicom(dicom_path)
+        resultado = segmentar_dicom(dicom_path, archivodicomid=archivodicomid)
 
         return resultado
 
