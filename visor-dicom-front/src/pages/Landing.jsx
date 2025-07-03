@@ -5,6 +5,8 @@ import Footer from '../components/landing/Footer';
 import Navbar from '../components/landing/Navbar';
 import AboutDicom from '../components/landing/AboutDicom';
 import ParallaxSection from '../components/landing/ParallaxSection';
+import FeaturesCarousel from "../components/landing/FeaturesCarousel";
+
 
 const Landing = () => {
   return (
@@ -13,6 +15,7 @@ const Landing = () => {
       <HeroSection />
       <AboutDicom />
       <ParallaxSection /> 
+      <FeaturesCarousel />
       <Features />
       <Footer />
     </div>

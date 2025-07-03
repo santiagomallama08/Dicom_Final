@@ -5,8 +5,9 @@ import { Link } from 'react-router-dom';
 const HeroSection = () => {
   return (
     <section className="relative h-screen w-full overflow-hidden text-white">
+      {/* Video de fondo */}
       <video
-        className="absolute top-0 left-0 w-full h-full object-cover blur-sm opacity-70 z-0"
+        className="absolute top-0 left-0 w-full h-full object-cover blur-sm opacity-60"
         autoPlay
         loop
         muted
@@ -15,20 +16,30 @@ const HeroSection = () => {
         <source src="/videos/fondo-hero.mp4" type="video/mp4" />
         Tu navegador no soporta el video.
       </video>
-      <div className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 z-0"></div>
 
-      <div className="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
-        <h1 className="text-5xl md:text-6xl font-bold mb-6 drop-shadow-xl">
-          Visor DICOM Inteligente
-        </h1>
-        <p className="text-xl md:text-2xl mb-8 max-w-3xl drop-shadow-lg">
-          Visualiza, segmenta y analiza imágenes médicas en tiempo real con precisión quirúrgica.
-        </p>
-        <Link to="/upload">
-          <button className="bg-white text-black font-semibold px-6 py-3 rounded hover:bg-gray-200 transition">
-            Empezar ahora
-          </button>
-        </Link>
+      {/* Overlay oscuro adicional */}
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
+
+      {/* Tarjeta central */}
+      <div className="relative z-10 flex items-center justify-center h-full px-4">
+        <div
+          className="bg-black/60 backdrop-blur-md max-w-2xl w-full text-center p-8 rounded-2xl shadow-2xl
+                     animate-fade-up"
+        >
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            Visor DICOM Inteligente
+          </h1>
+          <p className="text-lg md:text-xl text-gray-200 mb-6">
+            Visualiza, segmenta y analiza imágenes médicas en tiempo real con precisión quirúrgica.
+          </p>
+          <Link to="/login">
+            <button
+              className="bg-blue-600 text-white hover:bg-blue-700 font-semibold px-6 py-3 rounded-full shadow-lg transition duration-300"
+            >
+              Empezar ahora
+            </button>
+          </Link>
+        </div>
       </div>
     </section>
   );
