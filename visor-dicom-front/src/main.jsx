@@ -8,7 +8,10 @@ import 'aos/dist/aos.css';
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 
-AOS.init();
+AOS.init({
+  duration: 1000,
+  once: false,
+});
 
 
 ReactDOM.createRoot(document.getElementById('root')).render(

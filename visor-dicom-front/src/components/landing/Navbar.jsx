@@ -23,7 +23,7 @@ function Navbar() {
           </Link>
           <Link
             to="/login"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition duration-300"
+            className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] text-white px-4 py-2 rounded transition duration-300"
           >
             Iniciar sesión
           </Link>

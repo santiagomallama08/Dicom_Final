@@ -6,6 +6,7 @@ import Navbar from '../components/landing/Navbar';
 import AboutDicom from '../components/landing/AboutDicom';
 import ParallaxSection from '../components/landing/ParallaxSection';
 import FeaturesCarousel from "../components/landing/FeaturesCarousel";
+import ScrollZoomSection from '../components/landing/ScrollZoomSection';
 
 
 const Landing = () => {
@@ -15,6 +16,7 @@ const Landing = () => {
       <HeroSection />
       <AboutDicom />
       <ParallaxSection /> 
+      <ScrollZoomSection />
       <FeaturesCarousel />
       <Features />
       <Footer />

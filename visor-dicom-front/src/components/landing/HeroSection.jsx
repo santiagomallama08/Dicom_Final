@@ -34,7 +34,9 @@ const HeroSection = () => {
           </p>
           <Link to="/login">
             <button
-              className="bg-blue-600 text-white hover:bg-blue-700 font-semibold px-6 py-3 rounded-full shadow-lg transition duration-300"
+              className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00]
+             text-white font-semibold px-6 py-3 rounded-full 
+             shadow-lg transition duration-300 hover:brightness-110"
             >
               Empezar ahora
             </button>
