@@ -5,7 +5,7 @@ function Navbar() {
   return (
     <nav className="backdrop-blur-sm bg-black/60 text-white fixed w-full z-50 shadow-md">
       <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-        <Link to="/" className="text-2xl font-bold text-white hover:text-blue-400 transition duration-300">
+        <Link to="/login" className="text-2xl font-bold text-white hover:text-blue-400 transition duration-300">
           Visor DICOM
         </Link>
         <div className="space-x-6">
