@@ -87,7 +87,7 @@ const FeaturesCarousel = () => {
 
   return (
     <section className="feature-carousel py-20 bg-gray-100 relative">
-      <h2 className="text-3xl font-bold text-center mb-12">¿Qué puedes hacer aquí?</h2>
+      <h2 className="text-3xl font-bold text-black text-center mb-12">¿Qué puedes hacer aquí?</h2>
       <div className="max-w-7xl mx-auto px-4 relative">
         <Slider {...settings}>
           {features.map((f, i) => (

@@ -21,6 +21,8 @@
     "react-icons": "^5.5.0",
     "react-parallax-tilt": "^1.7.300",
     "react-router-dom": "^7.6.3",
+    "react-router-hash-link": "^2.4.3",
+    "react-scroll": "^1.9.3",
     "react-slick": "^0.30.3",
     "react-tsparticles": "^2.12.2",
     "slick-carousel": "^1.8.1",
