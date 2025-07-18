@@ -1,3 +1,4 @@
+// src/pages/Upload.jsx
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/shared/Navbar';
 import React, { useState } from 'react';
@@ -21,10 +22,17 @@ export default function Upload() {
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-      localStorage.setItem('lastSessionId', data.session_id);
-      navigate(`/visor/${data.session_id}`, { replace: true });
+
+      // 🚨 Si tu backend anida image_series, sacamos el session_id de ahí:
+      const sessionId = data.session_id || data.image_series?.session_id;
+      if (!sessionId) {
+        throw new Error('No se recibió session_id del servidor');
+      }
+
+      navigate(`/visor/${sessionId}`, { replace: true, state: { images: data.image_series.image_series || data.image_series } });
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al subir ZIP.');
+      console.error(err);
+      setError(err.response?.data?.detail || err.message || 'Error al subir ZIP.');
     }
   };
 

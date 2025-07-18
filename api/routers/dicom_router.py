@@ -2,7 +2,7 @@ import tempfile
 from tkinter import Image
 import uuid
 import zipfile
-from fastapi import APIRouter, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Path, UploadFile, File
 from fastapi.responses import JSONResponse
 import os
 import numpy as np
@@ -101,10 +101,15 @@ def obtener_mapping_de_serie(
     session_id: str = Query(..., description="UUID de la serie cargada")
 ):
     try:
-        mapping_path = os.path.join("static", "series", session_id, "mapping.json")
-        if not os.path.exists(mapping_path):
+        # BASE_DIR apunta a /api
+        BASE_DIR = Path(__file__).resolve().parent.parent
+        mapping_path = BASE_DIR / "static" / "series" / session_id / "mapping.json"
+        print(f"🛠 Buscando mapping en: {mapping_path}")
+
+        if not mapping_path.exists():
             return JSONResponse(
-                content={"error": "No se encontró el archivo de mapeo"}, status_code=404
+                content={"error": f"No se encontró el archivo de mapeo en {mapping_path}"},
+                status_code=404
             )
 
         with open(mapping_path, "r", encoding="utf-8") as f:

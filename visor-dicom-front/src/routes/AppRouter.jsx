@@ -14,7 +14,7 @@ const AppRouter = () => (
       <Route path="/login" element={<Login />} />
       <Route path="/upload" element={<Upload />} />
       <Route path="/register" element={<Register />} />
-      <Route path="/visor" element={<Viewer />} />
+      <Route path="/visor/:session_id" element={<Viewer />} />
     </Routes>
   </>
 );
