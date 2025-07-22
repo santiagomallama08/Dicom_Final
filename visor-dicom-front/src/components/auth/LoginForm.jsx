@@ -23,7 +23,8 @@ export default function LoginForm() {
         try {
             const { user_id } = (await axios.post(`${API_URL}/login`, { email, password })).data;
             localStorage.setItem('usuario', JSON.stringify({ user_id, email }));
-            nav('/upload');
+            localStorage.setItem('session_token', 'true'); // Marca sesión iniciada
+            nav('/welcome');
         } catch (err) {
             setError(err.response?.data?.detail || 'Error al iniciar sesión');
         }

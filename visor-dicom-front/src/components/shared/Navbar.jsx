@@ -5,16 +5,18 @@ import { HashLink as Link } from 'react-router-hash-link';
 
 export default function Navbar() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const navigate = useNavigate();
+
   const { pathname } = useLocation();
 
   useEffect(() => {
-    setLoggedIn(!!localStorage.getItem("usuario"));
-  }, [pathname]);
+  const hasSession = !!localStorage.getItem("session_token");
+  setLoggedIn(hasSession);
+}, [pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem("usuario");
-    navigate("/login", { replace: true });
+    localStorage.removeItem("session_token"); // <-- esto es esencial
+    window.location.href = "/login"; // forzar recarga completa del frontend
   };
 
   const linkClasses = "relative px-2 py-1 text-sm font-medium transition";
