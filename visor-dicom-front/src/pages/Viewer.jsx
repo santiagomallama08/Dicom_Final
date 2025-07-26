@@ -1,7 +1,6 @@
-// src/pages/Viewer.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import ViewerControls from '../components/dashboard/ViewerControls';
+import { ArrowLeft } from 'lucide-react';
 
 export default function Viewer() {
   const { session_id } = useParams();
@@ -10,8 +9,42 @@ export default function Viewer() {
   const images = location.state?.images || [];
 
   const [current, setCurrent] = useState(0);
+  const [zoom, setZoom] = useState(1.0);
+  const [windowWidth, setWindowWidth] = useState(1500); // Brillo
+  const [windowLevel, setWindowLevel] = useState(-500); // Contraste
+  const [rotation, setRotation] = useState(0); // Grados
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
 
-  // Si ni session_id ni images vienen, volvemos a /upload
+  const imageUrl = `http://localhost:8000${images[current]}`;
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - dragStart.current.x;
+    const deltaY = e.clientY - dragStart.current.y;
+
+    // Movimiento vertical → Brillo
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      setWindowWidth((prev) => Math.max(100, prev + deltaY * 2));
+    }
+    // Movimiento horizontal → Contraste
+    else {
+      setWindowLevel((prev) => prev + deltaX * 2);
+    }
+
+    dragStart.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   if (!session_id || !images.length) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -28,31 +61,137 @@ export default function Viewer() {
     );
   }
 
-  const imageUrl = `http://localhost:8000${images[current]}`;
-
   return (
-    <div className="min-h-screen bg-black text-white p-4 flex flex-col items-center">
-      <img
-        src={imageUrl}
-        alt={`DICOM frame ${current}`}
-        className="max-w-[600px] max-h-[600px] mb-4 rounded-lg shadow-lg"
-      />
+    <div
+      className="min-h-screen bg-black text-white flex flex-col items-center justify-center relative px-6 py-8"
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      {/* Botón regresar */}
+      <button
+        onClick={() => navigate('/upload')}
+        className="absolute top-4 left-4 px-4 py-2 text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow flex items-center gap-2"
+      >
+        <ArrowLeft size={18} /> Volver
+      </button>
 
-      <ViewerControls
-        current={current}
-        total={images.length}
-        onPrev={() => setCurrent(i => Math.max(i - 1, 0))}
-        onNext={() => setCurrent(i => Math.min(i + 1, images.length - 1))}
-      />
+      {/* Caja del visor (más grande) */}
+      <div
+        className="overflow-hidden rounded-lg shadow-2xl mb-6 border border-gray-700 bg-black"
+        style={{
+          width: '80vw',
+          height: '70vh',
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: isDragging ? 'grabbing' : 'grab',
+        }}
+        onMouseDown={handleMouseDown}
+      >
+        <img
+          src={imageUrl}
+          alt={`DICOM frame ${current}`}
+          style={{
+            maxWidth: '100%',
+            maxHeight: '100%',
+            objectFit: 'contain',
+            filter: `brightness(${windowWidth / 1000}) contrast(${(windowLevel + 1000) / 1000})`,
+            transform: `scale(${zoom}) rotate(${rotation}deg)`,
+            transition: 'transform 0.2s ease',
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
 
-      {/* Botón para segmentar */}
+      {/* Barra de navegación de imágenes */}
+      <div className="w-full max-w-2xl flex flex-col items-center mb-6">
+        <input
+          type="range"
+          min="0"
+          max={images.length - 1}
+          value={current}
+          onChange={(e) => setCurrent(Number(e.target.value))}
+          className="w-full accent-blue-500"
+        />
+        <div className="mt-2 text-sm text-gray-300">{`Imagen ${current + 1} / ${images.length}`}</div>
+      </div>
+
+      {/* Controles de zoom y rotación */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 items-center text-center w-full max-w-4xl">
+        <div className="flex flex-col items-center">
+          <label className="text-xs text-gray-400 mb-1">🔆 Brillo (W)</label>
+          <input
+            type="range"
+            min="500"
+            max="2500"
+            step="10"
+            value={windowWidth}
+            onChange={(e) => setWindowWidth(Number(e.target.value))}
+            className="w-40 accent-yellow-500"
+          />
+        </div>
+
+        <div className="flex flex-col items-center">
+          <label className="text-xs text-gray-400 mb-1">🌑 Contraste (L)</label>
+          <input
+            type="range"
+            min="-1000"
+            max="1000"
+            step="10"
+            value={windowLevel}
+            onChange={(e) => setWindowLevel(Number(e.target.value))}
+            className="w-40 accent-gray-400"
+          />
+        </div>
+
+        <div className="flex flex-col items-center">
+          <label className="text-xs text-gray-400 mb-1">🔍 Zoom</label>
+          <input
+            type="range"
+            min="0.5"
+            max="3"
+            step="0.1"
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            className="w-40 accent-purple-500"
+          />
+        </div>
+
+        <div className="flex flex-col items-center">
+          <label className="text-xs text-gray-400 mb-1">↻ Rotar</label>
+          <input
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+            value={rotation}
+            onChange={(e) => setRotation(Number(e.target.value))}
+            className="w-40 accent-blue-500"
+          />
+        </div>
+      </div>
+
+      {/* Valores actuales (opcional mostrar) */}
+      <div className="text-sm text-gray-400 flex gap-4 flex-wrap justify-center mb-4">
+        <span>Brillo: {windowWidth}</span>
+        <span>Contraste: {windowLevel}</span>
+        <span>Zoom: {zoom.toFixed(1)}x</span>
+        <span>Rotación: {rotation}°</span>
+      </div>
+
+      {/* Botón de segmentar */}
       <button
         onClick={() =>
           navigate(`/segmentar-desde-mapping/`, {
-            state: { session_id, image_name: images[current].split('/').pop() }
+            state: {
+              session_id,
+              image_name: images[current].split('/').pop()
+            }
           })
         }
-        className="mt-6 bg-green-600 hover:bg-green-700 px-6 py-2 rounded"
+        className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] px-6 py-2 rounded text-white hover:opacity-90 transition"
       >
         Segmentar esta imagen
       </button>

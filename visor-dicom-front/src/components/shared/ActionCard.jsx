@@ -12,8 +12,8 @@ export default function ActionCard({ title, description, onClick, color = 'from-
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-2xl'}`}
     >
       {Icon && (
-        <div className="absolute top-4 right-4 opacity-20 text-white text-6xl">
-          <Icon className="w-16 h-16" />
+        <div className="absolute top-4 right-4 opacity-30">
+          <Icon className="w-16 h-16 stroke-white" />
         </div>
       )}
       <h2 className="text-2xl md:text-3xl font-bold mb-2 z-10 relative">{title}</h2>
