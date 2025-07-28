@@ -1,8 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-
+import SegmentResult from '../components/dicom/SegmentResult';
 export default function Viewer() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [segmentacion, setSegmentacion] = useState(null);
+  const [loadingSegment, setLoadingSegment] = useState(false);
   const { session_id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -17,6 +20,44 @@ export default function Viewer() {
   const dragStart = useRef({ x: 0, y: 0 });
 
   const imageUrl = `http://localhost:8000${images[current]}`;
+
+  const segmentarImagen = async () => {
+    if (!session_id || !images[current]) {
+      console.error("Faltan session_id o imagen");
+      return;
+    }
+
+    setLoadingSegment(true);
+    try {
+      // Construimos un FormData en vez de JSON
+      const form = new FormData();
+      form.append("session_id", session_id);
+      // extraemos solo el nombre del archivo PNG
+      const imageName = images[current].split("/").pop();
+      form.append("image_name", imageName);
+
+      const response = await fetch("http://localhost:8000/segmentar-desde-mapping/", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Error del backend:", text);
+        return;
+      }
+
+      const data = await response.json();
+      // data debe tener { mensaje, mask_path, dimensiones }
+      setSegmentacion(data);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error("Error al segmentar:", error);
+    } finally {
+      setLoadingSegment(false);
+    }
+  };
+
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
@@ -71,9 +112,10 @@ export default function Viewer() {
       {/* Botón regresar */}
       <button
         onClick={() => navigate('/upload')}
-        className="absolute top-4 left-4 px-4 py-2 text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow flex items-center gap-2"
+        className="absolute top-4 left-4 p-2 text-white bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 rounded-full shadow-md transition duration-200"
+        title="Volver"
       >
-        <ArrowLeft size={18} /> Volver
+        <ArrowLeft size={20} />
       </button>
 
       {/* Caja del visor (más grande) */}
@@ -183,18 +225,18 @@ export default function Viewer() {
 
       {/* Botón de segmentar */}
       <button
-        onClick={() =>
-          navigate(`/segmentar-desde-mapping/`, {
-            state: {
-              session_id,
-              image_name: images[current].split('/').pop()
-            }
-          })
-        }
-        className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] px-6 py-2 rounded text-white hover:opacity-90 transition"
+        onClick={segmentarImagen}
+        className="px-6 py-2 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white font-semibold rounded shadow transition duration-200"
       >
-        Segmentar esta imagen
+        {loadingSegment ? 'Segmentando...' : 'Segmentar esta imagen'}
       </button>
+
+      <SegmentResult
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        segmentacion={segmentacion}
+      />
+
     </div>
   );
 }

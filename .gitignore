@@ -34,6 +34,9 @@ outputs/*
 static/segmentations
 
 # Ignorar carpeta de imágenes generadas
+api/static/segmentations
+
+# Ignorar carpeta de imágenes generadas
 api/static/series/
 
 

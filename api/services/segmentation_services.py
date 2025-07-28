@@ -9,21 +9,26 @@ from uuid import uuid4
 from config.db_config import get_connection
 
 
-def segmentar_dicom(dicom_path: str, archivodicomid: int, output_dir: str = "static/segmentations") -> dict:
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        base = os.path.splitext(os.path.basename(dicom_path))[0]
-        output_file = os.path.join(output_dir, f"{base}_mask.png")
+def segmentar_dicom(
+    dicom_path: str, archivodicomid: int, output_dir: str = None
+) -> dict:
 
-        # Leer imagen DICOM
+     # 1) Definir output_dir absoluto apuntando a api/static/segmentations
+    if output_dir is None:
+        output_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "static", "segmentations")
+        )
+
+    try:
+        # 2) Asegurarse de que exista
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 3) Leer DICOM y segmentar...
         ds = pydicom.dcmread(dicom_path)
         imagen = ds.pixel_array.astype(np.int16)
-
-        # Segmentación simple por umbral
-        umbral = 400  # adaptable en el futuro
+        umbral = 400
         mascara = imagen > umbral
         mascara = morphology.remove_small_objects(mascara, min_size=500)
-
         etiquetas = measure.label(mascara)
         props = regionprops(etiquetas)
 
@@ -33,10 +38,15 @@ def segmentar_dicom(dicom_path: str, archivodicomid: int, output_dir: str = "sta
         else:
             segmento = np.zeros_like(imagen)
 
-        binaria = (segmento.astype(np.uint8) * 255)
-        io.imsave(output_file, binaria)
+        binaria = segmento.astype(np.uint8) * 255
 
-        # Medidas físicas
+        # 4) Guardar máscara en disco
+        base = os.path.splitext(os.path.basename(dicom_path))[0]
+        rel_filename = f"{base}_mask.png"
+        absolute_mask_path = os.path.join(output_dir, rel_filename)
+        io.imsave(absolute_mask_path, binaria)
+
+        # 5) Calcular dimensiones
         px_y, px_x = ds.PixelSpacing
         slice_thk = getattr(ds, "SliceThickness", 1.0)
 
@@ -50,56 +60,61 @@ def segmentar_dicom(dicom_path: str, archivodicomid: int, output_dir: str = "sta
 
             dimensiones = {
                 "Longitud (mm)": round(largo_px * px_y, 2),
-                "Ancho (mm)":    round(ancho_px * px_x, 2),
-                "Altura (mm)":   round(slice_thk, 2),
-                "Área (mm²)":    round(area_px * px_x * px_y, 2),
+                "Ancho (mm)": round(ancho_px * px_x, 2),
+                "Altura (mm)": round(slice_thk, 2),
+                "Área (mm²)": round(area_px * px_x * px_y, 2),
                 "Perímetro (px)": round(perim_px, 2),
-                "Volumen (mm³)": round(area_px * px_x * px_y * slice_thk, 2)
+                "Volumen (mm³)": round(area_px * px_x * px_y * slice_thk, 2),
             }
 
-            # Guardar en base de datos si hay datos válidos
+            # Guardar en base de datos
             datos_bd = {
-                "archivodicomid": archivodicomid,  # 
+                "archivodicomid": archivodicomid,
                 "altura": dimensiones["Altura (mm)"],
                 "volumen": dimensiones["Volumen (mm³)"],
                 "longitud": dimensiones["Longitud (mm)"],
                 "ancho": dimensiones["Ancho (mm)"],
                 "tipoprotesis": "Cráneo",
-                "unidad": "mm³"
+                "unidad": "mm³",
             }
-
             guardar_protesis_dimension(datos_bd)
-
         else:
             dimensiones = {"error": "No se detectó región válida."}
 
+        # 6) Construir y devolver la ruta pública relativa (para frontend)
+        public_mask_path = f"/static/segmentations/{rel_filename}"
+
         return {
             "mensaje": "Segmentación exitosa",
-            "mask_path": f"/{output_file.replace(os.sep, '/')}",
-            "dimensiones": dimensiones
+            "mask_path": public_mask_path,
+            "dimensiones": dimensiones,
         }
 
     except Exception as e:
         return {"error": str(e)}
-    
+
+
 def guardar_protesis_dimension(data: dict) -> bool:
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO ProtesisDimension
               (archivodicomid, altura, volumen, longitud, ancho, tipoprotesis, unidad)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (
-            int(data["archivodicomid"]),
-            float(data["altura"]),
-            float(data["volumen"]),
-            float(data["longitud"]),
-            float(data["ancho"]),
-            str(data["tipoprotesis"]),
-            str(data["unidad"])
-        ))
+        """,
+            (
+                int(data["archivodicomid"]),
+                float(data["altura"]),
+                float(data["volumen"]),
+                float(data["longitud"]),
+                float(data["ancho"]),
+                str(data["tipoprotesis"]),
+                str(data["unidad"]),
+            ),
+        )
 
         conn.commit()
         cursor.close()
@@ -109,7 +124,10 @@ def guardar_protesis_dimension(data: dict) -> bool:
         print("❌ Error al guardar dimensiones:", e)
         return False
 
-def get_or_create_archivo_dicom(nombrearchivo: str, rutaarchivo: str, sistemaid: int = 1) -> int:
+
+def get_or_create_archivo_dicom(
+    nombrearchivo: str, rutaarchivo: str, sistemaid: int = 1
+) -> int:
     """
     Busca un archivo DICOM por nombre y ruta. Si no existe, lo inserta.
     Retorna el archivodicomid.
@@ -117,23 +135,29 @@ def get_or_create_archivo_dicom(nombrearchivo: str, rutaarchivo: str, sistemaid:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT archivodicomid FROM ArchivoDicom
         WHERE nombrearchivo = %s AND rutaarchivo = %s
-    """, (nombrearchivo, rutaarchivo))
+    """,
+        (nombrearchivo, rutaarchivo),
+    )
     resultado = cursor.fetchone()
 
     if resultado:
         archivo_id = resultado[0]
     else:
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO ArchivoDicom (fechacarga, sistemaid, nombrearchivo, rutaarchivo)
             VALUES (%s, %s, %s, %s)
             RETURNING archivodicomid
-        """, (datetime.date.today(), sistemaid, nombrearchivo, rutaarchivo))
+        """,
+            (datetime.date.today(), sistemaid, nombrearchivo, rutaarchivo),
+        )
         archivo_id = cursor.fetchone()[0]
         conn.commit()
 
     cursor.close()
     conn.close()
-    return archivo_id         
+    return archivo_id
