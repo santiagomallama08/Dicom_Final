@@ -16,7 +16,7 @@ AOS.init({
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider> {/* 👈 envuelve App aquí */}
+      <AuthProvider> {/* envuelve App aquí */}
         <App />
       </AuthProvider>
     </BrowserRouter>

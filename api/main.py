@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routers import login_router
 from api.routers import dicom_router
 from fastapi.staticfiles import StaticFiles
+from api.routers import historial_router
 
 
 app = FastAPI(title="DICOM API", version="1.0")
@@ -30,3 +31,4 @@ app.include_router(dicom_router.router)
 # Hacer accesibles las imágenes
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 app.include_router(login_router.router)
+app.include_router(historial_router.router)
