@@ -35,34 +35,50 @@ export default function Historial() {
   });
 
   const verSerie = async (archivo) => {
-  if (!archivo.session_id) return;
+    if (!archivo.session_id) return;
 
-  const mappingUrl = `http://localhost:8000/static/series/${archivo.session_id}/mapping.json`;
+    const mappingUrl = `http://localhost:8000/static/series/${archivo.session_id}/mapping.json`;
 
-  try {
-    const res = await fetch(mappingUrl);
-    if (!res.ok) {
-      console.error("No se encontró el mapping.json");
-      return;
+    try {
+      const res = await fetch(mappingUrl);
+      if (!res.ok) {
+        console.error("No se encontró el mapping.json");
+        return;
+      }
+
+      const mapping = await res.json();
+      const imagePaths = Object.keys(mapping).map(
+        (nombre) => `/static/series/${archivo.session_id}/${nombre}`
+      );
+
+      navigate(`/visor/${archivo.session_id}`, {
+        state: { images: imagePaths },
+      });
+
+    } catch (error) {
+      console.error("Error cargando mapping desde archivo:", error);
     }
+  };
 
-    const mapping = await res.json();
-    const imagePaths = Object.keys(mapping).map(
-      (nombre) => `/static/series/${archivo.session_id}/${nombre}`
-    );
-
-    navigate(`/visor/${archivo.session_id}`, {
-      state: { images: imagePaths },
-    });
-
-  } catch (error) {
-    console.error("Error cargando mapping desde archivo:", error);
-  }
-};
+  const eliminarSerie = async (session_id) => {
+    if (!window.confirm("¿Seguro que quieres eliminar toda la serie y sus archivos?")) return;
+    try {
+      const res = await fetch(
+        `http://localhost:8000/historial/series/${session_id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      // refrescar lista
+      setArchivos((prev) => prev.filter(a => a.session_id !== session_id));
+    } catch (err) {
+      console.error("Error borrando serie:", err);
+      alert("No se pudo eliminar la serie.");
+    }
+  };
 
   return (
     <section className="min-h-screen bg-white text-black p-10">
-      <h1 className="text-3xl font-bold mb-6">Historial de Archivos DICOM</h1>
+      <h1 className="text-3xl font-bold mb-6">Historial de series DICOM</h1>
 
       <input
         type="text"
@@ -95,7 +111,7 @@ export default function Historial() {
                   <td className="px-4 py-2">{archivo.fechacarga}</td>
                   <td className="px-4 py-2">
                     <button
-                    
+
                       className="text-sm bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] text-white px-3 py-1 rounded hover:opacity-90"
                       onClick={() => verSerie(archivo)}
                       disabled={!archivo.session_id}
@@ -106,6 +122,12 @@ export default function Historial() {
                       }
                     >
                       Ver
+                    </button>
+                    <button
+                      className="text-sm bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                      onClick={() => eliminarSerie(archivo.session_id)}
+                    >
+                      🗑️
                     </button>
                   </td>
                 </tr>
