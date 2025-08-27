@@ -1,3 +1,4 @@
+// src/components/auth/IntroVisual.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import Lottie from 'lottie-react';
 import animationData from '../../Assets/lotties/intro-login.json';

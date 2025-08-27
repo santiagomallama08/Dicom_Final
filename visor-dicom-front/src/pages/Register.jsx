@@ -1,3 +1,4 @@
+// src/pages/Register.jsx
 import React, { useState } from 'react';
 import RegisterForm from '../components/auth/RegisterForm';
 import Navbar from '../components/shared/Navbar';
