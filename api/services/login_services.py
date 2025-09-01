@@ -4,11 +4,9 @@ import psycopg2
 from config.db_config import get_connection
 from ..utils.hashing import hash_password, verify_password
 
+
 def registrar_usuario(
-    nombre_completo: str,
-    email: str,
-    password: str,
-    rol: str = "usuario"
+    nombre_completo: str, email: str, password: str, rol: str = "usuario"
 ) -> tuple[bool, str]:
     """
     Registra un nuevo usuario en la tabla login_usuarios.
@@ -24,7 +22,7 @@ def registrar_usuario(
             INSERT INTO login_usuarios (nombre_completo, email, contraseña, rol)
             VALUES (%s, %s, %s, %s)
             """,
-            (nombre_completo, email, hashed_pw, rol)
+            (nombre_completo, email, hashed_pw, rol),
         )
         conn.commit()
         return True, "Registro exitoso"
@@ -34,6 +32,7 @@ def registrar_usuario(
         if conn:
             cur.close()
             conn.close()
+
 
 def verificar_credenciales(email: str, password: str) -> bool:
     """
@@ -53,16 +52,20 @@ def verificar_credenciales(email: str, password: str) -> bool:
             cur.close()
             conn.close()
 
-def obtener_id_usuario(email: str) -> int:
+
+def obtener_id_usuario(email: str):
     """
-    Devuelve el id del usuario dado su email, o None si no existe.
+    Devuelve (id, nombre_completo) del usuario dado su email,
+    o None si no existe.
     """
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT id FROM login_usuarios WHERE email = %s", (email,))
+        cur.execute(
+            "SELECT id, nombre_completo FROM login_usuarios WHERE email = %s", (email,)
+        )
         row = cur.fetchone()
-        return row[0] if row else None
+        return (row[0], row[1]) if row else None
     finally:
         if conn:
             cur.close()

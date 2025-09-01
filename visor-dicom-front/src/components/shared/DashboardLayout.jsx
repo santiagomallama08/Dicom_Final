@@ -1,6 +1,11 @@
 // src/components/shared/DashboardLayout.jsx
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import Swal from 'sweetalert2';
+import { LogOut, User2 } from 'lucide-react';
+import UserChip from './UserChip';
 import {
   LayoutDashboard,
   UploadCloud,
@@ -40,6 +45,27 @@ const SidebarItem = ({ to, icon: Icon, label }) => (
 );
 
 export default function DashboardLayout() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem('usuario') || '{}');
+
+  const handleLogout = async () => {
+    const res = await Swal.fire({
+      title: 'Cerrar sesión',
+      text: '¿Deseas cerrar tu sesión ahora?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Cerrar sesión',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#d33',
+    });
+    if (!res.isConfirmed) return;
+
+    logout(); // limpia session_token en tu AuthContext
+    localStorage.removeItem('usuario');
+    navigate('/login', { replace: true });
+  };
+
   return (
     <div className="flex h-screen bg-[#0f0f10] text-white overflow-hidden">
       {/* Sidebar */}
@@ -62,9 +88,21 @@ export default function DashboardLayout() {
           ))}
         </nav>
 
+        {/* 2.3 — bloque usuario + logout (footer del sidebar) */}
+        <div className="mt-6 border-t border-gray-800 pt-4">
+          <UserChip name={user?.nombre_completo} email={user?.email} showEmail={false} />
+          <button
+            onClick={handleLogout}
+            className="w-full mt-3 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white"
+          >
+            <LogOut size={16} />
+            Cerrar sesión
+          </button>
+        </div>
+
         {/* Pie de sidebar */}
-        <div className="text-xs text-gray-500 mt-6">
-          v1.0 · Innovación Médica
+        <div className="text-xs text-gray-500 mt-4">
+          v1.1 · Innovación Médica
         </div>
       </aside>
 

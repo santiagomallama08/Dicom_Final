@@ -1,7 +1,9 @@
-// src/pages/UploadPage.jsx
+// src/pages/Upload.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import UploadCard from '../components/dicom/UploadCard';
+import Swal from 'sweetalert2';
+import { userHeaders } from '../utils/authHeaders';
 
 export default function UploadPage() {
   const [file, setFile] = useState(null);
@@ -13,7 +15,15 @@ export default function UploadPage() {
   };
 
   const handleUpload = async () => {
-    if (!file) return alert('Selecciona un archivo');
+    if (!file) {
+      await Swal.fire({
+        title: 'Selecciona un archivo',
+        text: 'Debes elegir un ZIP con imágenes DICOM.',
+        icon: 'info',
+        confirmButtonText: 'Entendido',
+      });
+      return;
+    }
 
     setIsLoading(true);
     const formData = new FormData();
@@ -22,25 +32,38 @@ export default function UploadPage() {
     try {
       const response = await fetch('http://localhost:8000/upload-dicom-series/', {
         method: 'POST',
+        headers: {
+          ...userHeaders(), 
+        },
         body: formData,
       });
+
+      if (!response.ok) {
+        const msg = await response.text();
+        throw new Error(msg || 'Error al procesar el ZIP en el servidor.');
+      }
 
       const result = await response.json();
 
       const sessionId = result.session_id || result.image_series?.session_id;
       const images = result.image_series?.image_series || result.image_series;
 
-      if (!sessionId) throw new Error('No se recibió session_id del servidor');
+      if (!sessionId) {
+        throw new Error('No se recibió el session_id del servidor.');
+      }
 
-      // ✅ Redirección con estado
       navigate(`/visor/${sessionId}`, {
         replace: true,
-        state: { images },
+        state: { images, source: 'upload' },
       });
-
     } catch (error) {
       console.error(error);
-      alert('Error al subir el archivo');
+      await Swal.fire({
+        title: 'Error al subir',
+        text: error.message || 'Ocurrió un problema al subir el archivo.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
     } finally {
       setIsLoading(false);
     }

@@ -18,6 +18,7 @@ import ExportacionSTL from '../pages/ExportacionSTL';
 import Reportes from '../pages/Reportes';
 import Pacientes from '../pages/Pacientes';
 import Configuracion from '../pages/Configuracion';
+import Segmentaciones from '../pages/Segmentaciones';
 
 const AppRouter = () => (
   <Routes>
@@ -43,6 +44,7 @@ const AppRouter = () => (
     <Route path="/upload" element={<Upload />} />
     <Route path="/visor/:session_id" element={<Viewer />} />
     <Route path="/historial" element={<Historial />} />
+    <Route path="/segmentaciones/:session_id" element={<Segmentaciones />} /> 
     <Route path="/modelado3d" element={<Modelado3D />} />
     <Route path="/exportacion-stl" element={<ExportacionSTL />} />
     <Route path="/reportes" element={<Reportes />} />

@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import SegmentResult from '../components/dicom/SegmentResult';
+import { userHeaders } from '../utils/authHeaders';
 export default function Viewer() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [segmentacion, setSegmentacion] = useState(null);
@@ -20,7 +21,16 @@ export default function Viewer() {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
 
+
   const imageUrl = `http://localhost:8000${images[current]}`;
+
+
+  const goBack = () => {
+    const source = location.state?.source;
+    if (source === 'historial') return navigate('/historial');
+    if (source === 'upload') return navigate('/upload');
+    return navigate(-1); // fallback
+  };
 
   const segmentarImagen = async () => {
     if (!session_id || !images[current]) {
@@ -30,15 +40,17 @@ export default function Viewer() {
 
     setLoadingSegment(true);
     try {
-      // Construimos un FormData en vez de JSON
       const form = new FormData();
       form.append("session_id", session_id);
-      // extraemos solo el nombre del archivo PNG
       const imageName = images[current].split("/").pop();
       form.append("image_name", imageName);
 
       const response = await fetch("http://localhost:8000/segmentar-desde-mapping/", {
         method: "POST",
+        headers: {
+          ...userHeaders(), // 👈 X-User-Id
+          // NO pongas Content-Type; FormData lo maneja
+        },
         body: form,
       });
 
@@ -49,7 +61,6 @@ export default function Viewer() {
       }
 
       const data = await response.json();
-      // data debe tener { mensaje, mask_path, dimensiones }
       setSegmentacion(data);
       setIsModalOpen(true);
     } catch (error) {
@@ -112,7 +123,7 @@ export default function Viewer() {
     >
       {/* Botón regresar */}
       <button
-        onClick={() => navigate('/upload')}
+        onClick={goBack}
         className="absolute top-4 left-4 p-2 text-white bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 rounded-full shadow-md transition duration-200"
         title="Volver"
       >

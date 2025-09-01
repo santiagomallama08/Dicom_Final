@@ -13,7 +13,7 @@ import numpy as np
 from .segmentation_services import get_or_create_archivo_dicom
 
 
-def convert_dicom_zip_to_png_paths(zip_file: bytes) -> dict:
+def convert_dicom_zip_to_png_paths(zip_file: bytes, user_id: int) -> dict:  
     session_id = str(uuid.uuid4())
     output_dir = os.path.join("api", "static", "series", session_id)
     os.makedirs(output_dir, exist_ok=True)
@@ -23,29 +23,23 @@ def convert_dicom_zip_to_png_paths(zip_file: bytes) -> dict:
 
     with zipfile.ZipFile(io.BytesIO(zip_file)) as archive:
         dcm_files = [f for f in archive.namelist() if f.lower().endswith(".dcm")]
-
         if not dcm_files:
             raise ValueError("No se encontraron archivos DICOM en el ZIP.")
 
         for idx, dicom_name in enumerate(dcm_files):
             try:
-                # Leer los bytes del DICOM desde el ZIP
                 with archive.open(dicom_name) as file:
                     dicom_bytes = file.read()
 
-                # Guardar el archivo DICOM en disco
                 dicom_output_path = os.path.join(output_dir, dicom_name)
                 os.makedirs(os.path.dirname(dicom_output_path), exist_ok=True)
                 with open(dicom_output_path, "wb") as f:
                     f.write(dicom_bytes)
 
-                # Leer el DICOM desde memoria
                 ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
-
                 if "PixelData" not in ds:
                     continue
 
-                # Convertir a PNG
                 image = ds.pixel_array
                 image = exposure.equalize_adapthist(image)
                 image = (image * 255).astype("uint8")
@@ -55,19 +49,18 @@ def convert_dicom_zip_to_png_paths(zip_file: bytes) -> dict:
                 png_path = os.path.join(output_dir, png_filename)
                 im.save(png_path)
 
-                # ✅ Registrar DICOM en la base de datos
+                # 👇 guardar DICOM con user_id
                 archivo_id = get_or_create_archivo_dicom(
                     nombrearchivo=os.path.basename(dicom_name),
                     rutaarchivo=dicom_output_path,
-                    sistemaid=1  # o el que uses
+                    sistemaid=1,
+                    user_id=user_id,  # 👈
                 )
 
-                # ✅ Guardar en mapping tanto el nombre original como el ID
                 dicom_mapping[png_filename] = {
                     "dicom_name": dicom_name,
-                    "archivodicomid": archivo_id
+                    "archivodicomid": archivo_id,
                 }
-
                 image_paths.append(f"/static/series/{session_id}/{png_filename}")
 
             except Exception as e:
@@ -77,7 +70,6 @@ def convert_dicom_zip_to_png_paths(zip_file: bytes) -> dict:
     if not image_paths:
         raise ValueError("No se pudieron procesar archivos DICOM válidos.")
 
-    # Guardar mapeo en JSON
     mapping_path = os.path.join(output_dir, "mapping.json")
     with open(mapping_path, "w", encoding="utf-8") as f:
         json.dump(dicom_mapping, f, ensure_ascii=False, indent=2)
@@ -86,5 +78,5 @@ def convert_dicom_zip_to_png_paths(zip_file: bytes) -> dict:
         "message": "ZIP procesado correctamente",
         "session_id": session_id,
         "image_series": image_paths,
-        "mapping_url": f"/static/series/{session_id}/mapping.json"
+        "mapping_url": f"/static/series/{session_id}/mapping.json",
     }

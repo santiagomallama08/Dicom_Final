@@ -3,7 +3,7 @@ import tempfile
 from tkinter import Image
 import uuid
 import zipfile
-from fastapi import APIRouter, Form, HTTPException, Path, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Path, UploadFile, File, Header
 from fastapi.responses import JSONResponse
 import os
 import numpy as np
@@ -56,15 +56,18 @@ async def upload_dicom(file: UploadFile = File(...)):
 
 
 @router.post("/upload-dicom-series/")
-async def upload_dicom_series(file: UploadFile = File(...)):
+async def upload_dicom_series(
+    file: UploadFile = File(...),
+    x_user_id: int = Header(..., alias="X-User-Id"),  
+):
     if not file.filename.endswith(".zip"):
         raise HTTPException(
             status_code=400, detail="Debe subir un archivo .zip con archivos DICOM"
         )
-
     try:
         zip_bytes = await file.read()
-        image_paths = convert_dicom_zip_to_png_paths(zip_bytes)
+
+        image_paths = convert_dicom_zip_to_png_paths(zip_bytes, user_id=x_user_id)
         return JSONResponse(
             content={
                 "message": f"{len(image_paths)} imágenes convertidas correctamente.",
@@ -109,8 +112,10 @@ def obtener_mapping_de_serie(
 
         if not mapping_path.exists():
             return JSONResponse(
-                content={"error": f"No se encontró el archivo de mapeo en {mapping_path}"},
-                status_code=404
+                content={
+                    "error": f"No se encontró el archivo de mapeo en {mapping_path}"
+                },
+                status_code=404,
             )
 
         with open(mapping_path, "r", encoding="utf-8") as f:
@@ -124,12 +129,12 @@ def obtener_mapping_de_serie(
 @router.post("/segmentar-desde-mapping/")
 async def segmentar_desde_mapping(
     session_id: str = Form(...),
-    image_name: str = Form(...)
+    image_name: str = Form(...),
+    x_user_id: int = Header(..., alias="X-User-Id"),  
 ):
     try:
         base_dir = os.path.join("api", "static", "series", session_id)
         mapping_path = os.path.join(base_dir, "mapping.json")
-
         if not os.path.exists(mapping_path):
             raise FileNotFoundError("No se encontró el archivo mapping.json")
 
@@ -139,20 +144,23 @@ async def segmentar_desde_mapping(
         if image_name not in mapping:
             raise ValueError(f"No se encontró {image_name} en el mapping")
 
-        # ✅ Obtener datos del mapping
         dicom_info = mapping[image_name]
         dicom_filename = dicom_info["dicom_name"]
         archivodicomid = dicom_info["archivodicomid"]
 
         dicom_path = os.path.join(base_dir, dicom_filename)
         if not os.path.exists(dicom_path):
-            raise FileNotFoundError(f"No se encontró el archivo DICOM: {dicom_filename}")
+            raise FileNotFoundError(
+                f"No se encontró el archivo DICOM: {dicom_filename}"
+            )
 
-        # ✅ Llamar la función con el ID real
+  
         from ..services.segmentation_services import segmentar_dicom
-        resultado = segmentar_dicom(dicom_path, archivodicomid=archivodicomid)
+
+        resultado = segmentar_dicom(
+            dicom_path, archivodicomid=archivodicomid, user_id=x_user_id
+        )
 
         return resultado
-
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)

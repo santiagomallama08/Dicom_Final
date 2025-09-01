@@ -17,13 +17,24 @@ export default function LoginForm() {
     const [error, setError] = useState('');
     const nav = useNavigate();
 
-    const onSubmit = async e => {
+    const onSubmit = async (e) => {
         e.preventDefault();
         setError('');
+
         try {
-            const { user_id } = (await axios.post(`${API_URL}/login`, { email, password })).data;
-            localStorage.setItem('usuario', JSON.stringify({ user_id, email }));
+            const { data } = await axios.post(`${API_URL}/login`, { email, password });
+            const { user_id, nombre_completo, email: respEmail } = data;
+
+            localStorage.setItem(
+                'usuario',
+                JSON.stringify({
+                    user_id,
+                    email: respEmail || email,
+                    nombre_completo,
+                })
+            );
             localStorage.setItem('session_token', 'true'); // Marca sesión iniciada
+
             nav('/welcome');
         } catch (err) {
             setError(err.response?.data?.detail || 'Error al iniciar sesión');

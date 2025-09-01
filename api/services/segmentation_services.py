@@ -11,10 +11,10 @@ from config.db_config import get_connection
 
 
 def segmentar_dicom(
-    dicom_path: str, archivodicomid: int, output_dir: str = None
+    dicom_path: str, archivodicomid: int, user_id: int, output_dir: str = None
 ) -> dict:
 
-     # 1) Definir output_dir absoluto apuntando a api/static/segmentations
+    # 1) Definir output_dir absoluto apuntando a api/static/segmentations
     if output_dir is None:
         output_dir = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "static", "segmentations")
@@ -77,6 +77,7 @@ def segmentar_dicom(
                 "ancho": dimensiones["Ancho (mm)"],
                 "tipoprotesis": "Cráneo",
                 "unidad": "mm³",
+                "user_id": user_id,  
             }
             guardar_protesis_dimension(datos_bd)
         else:
@@ -103,8 +104,8 @@ def guardar_protesis_dimension(data: dict) -> bool:
         cursor.execute(
             """
             INSERT INTO ProtesisDimension
-              (archivodicomid, altura, volumen, longitud, ancho, tipoprotesis, unidad)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+              (archivodicomid, altura, volumen, longitud, ancho, tipoprotesis, unidad, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
             (
                 int(data["archivodicomid"]),
@@ -114,6 +115,7 @@ def guardar_protesis_dimension(data: dict) -> bool:
                 float(data["ancho"]),
                 str(data["tipoprotesis"]),
                 str(data["unidad"]),
+                int(data["user_id"]),  
             ),
         )
 
@@ -127,7 +129,7 @@ def guardar_protesis_dimension(data: dict) -> bool:
 
 
 def get_or_create_archivo_dicom(
-    nombrearchivo: str, rutaarchivo: str, sistemaid: int = 1
+    nombrearchivo: str, rutaarchivo: str, sistemaid: int = 1, user_id: int = None
 ) -> int:
     """
     Busca un archivo DICOM por nombre y ruta. Si no existe, lo inserta.
@@ -136,12 +138,13 @@ def get_or_create_archivo_dicom(
     conn = get_connection()
     cursor = conn.cursor()
 
+    
     cursor.execute(
         """
         SELECT archivodicomid FROM ArchivoDicom
-        WHERE nombrearchivo = %s AND rutaarchivo = %s
+        WHERE nombrearchivo = %s AND rutaarchivo = %s AND user_id = %s
     """,
-        (nombrearchivo, rutaarchivo),
+        (nombrearchivo, rutaarchivo, user_id),
     )
     resultado = cursor.fetchone()
 
@@ -150,11 +153,11 @@ def get_or_create_archivo_dicom(
     else:
         cursor.execute(
             """
-            INSERT INTO ArchivoDicom (fechacarga, sistemaid, nombrearchivo, rutaarchivo)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO ArchivoDicom (fechacarga, sistemaid, nombrearchivo, rutaarchivo, user_id)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING archivodicomid
         """,
-            (datetime.date.today(), sistemaid, nombrearchivo, rutaarchivo),
+            (datetime.date.today(), sistemaid, nombrearchivo, rutaarchivo, user_id),
         )
         archivo_id = cursor.fetchone()[0]
         conn.commit()

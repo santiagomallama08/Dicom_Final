@@ -22,3 +22,5 @@ class ArchivoDicomOut(BaseModel):
     fechacarga: date
     sistemaid: int
     session_id: str | None = None
+    has_segmentations: bool = False  
+    seg_count: int = 0
