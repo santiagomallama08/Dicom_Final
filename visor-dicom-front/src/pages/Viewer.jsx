@@ -4,6 +4,8 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import SegmentResult from '../components/dicom/SegmentResult';
 import { userHeaders } from '../utils/authHeaders';
+import Swal from 'sweetalert2';
+
 export default function Viewer() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [segmentacion, setSegmentacion] = useState(null);
@@ -21,9 +23,7 @@ export default function Viewer() {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
 
-
   const imageUrl = `http://localhost:8000${images[current]}`;
-
 
   const goBack = () => {
     const source = location.state?.source;
@@ -32,6 +32,7 @@ export default function Viewer() {
     return navigate(-1); // fallback
   };
 
+  // --- SEGMENTACIÓN 2D (EXISTENTE) ---
   const segmentarImagen = async () => {
     if (!session_id || !images[current]) {
       console.error("Faltan session_id o imagen");
@@ -70,6 +71,38 @@ export default function Viewer() {
     }
   };
 
+  // --: SEGMENTACIÓN DE SERIE (3D) ---
+  const segmentarSerie3D = async () => {
+    try {
+      const form = new FormData();
+      form.append('session_id', session_id);
+
+      const res = await fetch('http://localhost:8000/segmentar-serie-3d/', {
+        method: 'POST',
+        headers: userHeaders(), // incluye X-User-Id
+        body: form
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falló la segmentación 3D');
+
+      await Swal.fire({
+        icon: 'success',
+        title: 'Segmentación 3D creada',
+        text: `Volumen: ${Number(data.volume_mm3 || 0).toFixed(0)} mm³`,
+        showConfirmButton: true,
+        confirmButtonText: 'Ver en Segs'
+      });
+
+      navigate(`/segmentaciones/${session_id}`);
+    } catch (e) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: e.message || 'No se pudo segmentar en 3D'
+      });
+    }
+  };
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
@@ -235,20 +268,28 @@ export default function Viewer() {
         <span>Rotación: {rotation}°</span>
       </div>
 
-      {/* Botón de segmentar */}
-      <button
-        onClick={segmentarImagen}
-        className="px-6 py-2 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white font-semibold rounded shadow transition duration-200"
-      >
-        {loadingSegment ? 'Segmentando...' : 'Segmentar esta imagen'}
-      </button>
+      {/* Botones de segmentación */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={segmentarImagen}
+          className="px-6 py-2 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white font-semibold rounded shadow transition duration-200"
+        >
+          {loadingSegment ? 'Segmentando...' : 'Segmentar esta imagen'}
+        </button>
+
+        <button
+          onClick={segmentarSerie3D}
+          className="ml-0 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded shadow transition duration-200"
+        >
+          Segmentar serie (3D)
+        </button>
+      </div>
 
       <SegmentResult
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         segmentacion={segmentacion}
       />
-
     </div>
   );
 }

@@ -10,6 +10,7 @@ import numpy as np
 import pydicom
 from fastapi import Query
 import json
+from ..services.segmentation3d_service import segmentar_serie_3d
 
 
 from ..services.dicom_service import convert_dicom_zip_to_png_paths
@@ -162,5 +163,17 @@ async def segmentar_desde_mapping(
         )
 
         return resultado
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@router.post("/segmentar-serie-3d/")
+def segmentar_serie_3d_endpoint(
+    session_id: str = Form(...),
+    x_user_id: int = Header(..., alias="X-User-Id")
+):
+    try:
+        result = segmentar_serie_3d(session_id, user_id=x_user_id)
+        return result
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)

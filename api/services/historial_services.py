@@ -13,11 +13,9 @@ def extraer_session_id(ruta: str) -> str:
 
 
 def contar_segmentaciones_por_session(conn, session_id: str, user_id: int) -> int:
-    """
-    Cuenta cuántas segmentaciones hay asociadas a los DICOM cuya ruta contiene el session_id.
-    Filtra por el usuario propietario (user_id).
-    """
     cur = conn.cursor()
+
+    # Segmentaciones 2D (filtradas por usuario)
     cur.execute(
         """
         SELECT COUNT(*)
@@ -25,13 +23,25 @@ def contar_segmentaciones_por_session(conn, session_id: str, user_id: int) -> in
         JOIN archivodicom ad ON ad.archivodicomid = pd.archivodicomid
         WHERE ad.rutaarchivo LIKE %s
           AND ad.user_id = %s
-          AND pd.user_id = %s
-    """,
-        [f"%{session_id}%", user_id, user_id],
+        """,
+        (f"%{session_id}%", user_id),
     )
-    count = cur.fetchone()[0]
+    count_2d = cur.fetchone()[0]
+
+    # Segmentaciones 3D (filtradas por usuario)
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM segmentacion3d s3d
+        WHERE s3d.session_id = %s
+          AND s3d.user_id = %s
+        """,
+        (session_id, user_id),
+    )
+    count_3d = cur.fetchone()[0]
+
     cur.close()
-    return count
+    return count_2d + count_3d
 
 
 def obtener_historial_archivos(user_id: int) -> List[Dict]:

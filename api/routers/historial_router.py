@@ -9,6 +9,11 @@ from api.services.historial_services import (
     eliminar_segmentacion_por_archivo,
 )
 
+from api.services.segmentation3d_service import (
+    listar_segmentaciones_3d,
+    borrar_segmentacion_3d
+)
+
 router = APIRouter()
 
 
@@ -60,5 +65,23 @@ def eliminar_serie(session_id: str, x_user_id: int = Header(..., alias="X-User-I
                 detail="Esta serie tiene segmentaciones asociadas. Debes borrarlas primero.",
             )
         raise HTTPException(status_code=500, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/historial/series/{session_id}/segmentaciones-3d")
+def listar_segmentaciones_3d_router(session_id: str, x_user_id: int = Header(..., alias="X-User-Id")):
+    try:
+        return listar_segmentaciones_3d(session_id, user_id=x_user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/historial/segmentaciones-3d/{seg3d_id}")
+def borrar_segmentacion_3d_router(seg3d_id: int, x_user_id: int = Header(..., alias="X-User-Id")):
+    try:
+        ok = borrar_segmentacion_3d(seg3d_id, user_id=x_user_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="No encontrada")
+        return {"mensaje": "Segmentación 3D eliminada"}
+    except HTTPException: raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
