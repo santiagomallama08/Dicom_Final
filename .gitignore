@@ -39,6 +39,8 @@ api/static/segmentations
 # Ignorar carpeta de imágenes generadas
 api/static/series/
 
+# Ignorar carpeta de imágenes generadas
+api/static/segmentations3d
 
 #Ignorea los uploads
 uploads
