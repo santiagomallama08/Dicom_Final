@@ -1,7 +1,7 @@
 // src/pages/Segmentaciones.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download, Trash2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { userHeaders } from "../utils/authHeaders";
 
@@ -11,43 +11,50 @@ export default function Segmentaciones() {
   const { session_id } = useParams();
   const navigate = useNavigate();
 
-  const [items2d, setItems2d] = useState([]);
-  const [items3d, setItems3d] = useState([]);
+  // 2D
+  const [items2D, setItems2D] = useState([]);
+  // 3D
+  const [items3D, setItems3D] = useState([]);
+  // Modelos STL
+  const [modelos, setModelos] = useState([]);
+
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
 
-  const cargar = async () => {
-    setCargando(true);
-    setError("");
+  const cargar2D = async () => {
+    const res = await fetch(`${API}/historial/series/${session_id}/segmentaciones`, {
+      headers: { ...userHeaders() },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    setItems2D(await res.json());
+  };
+
+  const cargar3D = async () => {
+    const res = await fetch(`${API}/historial/series/${session_id}/segmentaciones-3d`, {
+      headers: { ...userHeaders() },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    setItems3D(await res.json());
+  };
+
+  const cargarModelos = async () => {
     try {
-      const [r2d, r3d] = await Promise.all([
-        fetch(`${API}/historial/series/${session_id}/segmentaciones`, {
-          headers: { ...userHeaders() },
-        }),
-        fetch(`${API}/historial/series/${session_id}/segmentaciones-3d`, {
-          headers: { ...userHeaders() },
-        }),
-      ]);
-
-      if (!r2d.ok) throw new Error(await r2d.text());
-      if (!r3d.ok) throw new Error(await r3d.text());
-
-      const d2d = await r2d.json();
-      const d3d = await r3d.json();
-
-      setItems2d(d2d || []);
-      setItems3d(d3d || []);
-    } catch (e) {
-      console.error(e);
-      setError("No se pudieron cargar las segmentaciones.");
-    } finally {
-      setCargando(false);
+      const res = await fetch(`${API}/modelos/series/${session_id}`, {
+        headers: { ...userHeaders() },
+      });
+      if (!res.ok) {
+        setModelos([]);
+        return;
+      }
+      setModelos(await res.json());
+    } catch {
+      setModelos([]);
     }
   };
 
-  const borrar2d = async (archivodicomid) => {
+  const borrar2D = async (archivodicomid) => {
     const ok = await Swal.fire({
-      title: "¿Eliminar esta segmentación?",
+      title: "¿Eliminar esta segmentación 2D?",
       text: "Esta acción no se puede deshacer.",
       icon: "warning",
       showCancelButton: true,
@@ -60,32 +67,18 @@ export default function Segmentaciones() {
     try {
       const res = await fetch(
         `${API}/historial/series/${session_id}/segmentaciones/${archivodicomid}`,
-        {
-          method: "DELETE",
-          headers: { ...userHeaders() },
-        }
+        { method: "DELETE", headers: { ...userHeaders() } }
       );
       if (!res.ok) throw new Error(await res.text());
-
-      setItems2d((prev) => prev.filter((x) => x.archivodicomid !== archivodicomid));
-
-      Swal.fire({
-        icon: "success",
-        title: "Segmentación eliminada",
-        showConfirmButton: false,
-        timer: 1200,
-      });
-    } catch (e) {
-      console.error(e);
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudo eliminar la segmentación.",
-      });
+      setItems2D((prev) => prev.filter((x) => x.archivodicomid !== archivodicomid));
+      Swal.fire({ icon: "success", title: "Segmentación eliminada", timer: 1200, showConfirmButton: false });
+    } catch {
+      Swal.fire({ icon: "error", title: "Error", text: "No se pudo eliminar la segmentación." });
     }
   };
 
-  const borrar3d = async (seg3d_id) => {
+  // NUEVO: eliminar segmentación 3D
+  const borrar3D = async (seg3dId) => {
     const ok = await Swal.fire({
       title: "¿Eliminar esta segmentación 3D?",
       text: "Esta acción no se puede deshacer.",
@@ -98,36 +91,72 @@ export default function Segmentaciones() {
     if (!ok.isConfirmed) return;
 
     try {
-      const res = await fetch(`${API}/historial/segmentaciones-3d/${seg3d_id}`, {
+      const res = await fetch(`${API}/historial/segmentaciones-3d/${seg3dId}`, {
         method: "DELETE",
         headers: { ...userHeaders() },
       });
       if (!res.ok) throw new Error(await res.text());
+      setItems3D((prev) => prev.filter((s) => s.id !== seg3dId));
+      Swal.fire({ icon: "success", title: "Segmentación 3D eliminada", timer: 1200, showConfirmButton: false });
+    } catch {
+      Swal.fire({ icon: "error", title: "Error", text: "No se pudo eliminar la segmentación 3D." });
+    }
+  };
 
-      setItems3d((prev) => prev.filter((x) => x.id !== seg3d_id));
-
-      Swal.fire({
-        icon: "success",
-        title: "Segmentación 3D eliminada",
-        showConfirmButton: false,
-        timer: 1200,
+  const exportarStl = async (seg3dId) => {
+    try {
+      const res = await fetch(`${API}/modelos/exportar-stl`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...userHeaders() },
+        body: JSON.stringify({ seg3d_id: seg3dId }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || data?.error || "No se pudo exportar STL");
+      await cargarModelos();
+      Swal.fire({ icon: "success", title: "STL generado", timer: 1200, showConfirmButton: false });
     } catch (e) {
-      console.error(e);
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudo eliminar la segmentación 3D.",
+      Swal.fire({ icon: "error", title: "Error", text: e.message || "No se pudo exportar STL" });
+    }
+  };
+
+  const borrarModelo = async (modeloId) => {
+    const ok = await Swal.fire({
+      title: "¿Eliminar este STL?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#d33",
+    });
+    if (!ok.isConfirmed) return;
+
+    try {
+      const res = await fetch(`${API}/modelos/${modeloId}`, {
+        method: "DELETE",
+        headers: { ...userHeaders() },
       });
+      if (!res.ok) throw new Error(await res.text());
+      setModelos((prev) => prev.filter((m) => m.id !== modeloId));
+      Swal.fire({ icon: "success", title: "STL eliminado", timer: 1200, showConfirmButton: false });
+    } catch {
+      Swal.fire({ icon: "error", title: "Error", text: "No se pudo eliminar el STL." });
     }
   };
 
   useEffect(() => {
-    cargar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    (async () => {
+      setCargando(true);
+      setError("");
+      try {
+        await Promise.all([cargar2D(), cargar3D(), cargarModelos()]);
+      } catch (e) {
+        console.error(e);
+        setError("No se pudieron cargar los datos de la serie.");
+      } finally {
+        setCargando(false);
+      }
+    })();
   }, [session_id]);
-
-  const noHayNada = !cargando && items2d.length === 0 && items3d.length === 0;
 
   return (
     <section className="min-h-screen bg-white text-black p-8">
@@ -146,68 +175,39 @@ export default function Segmentaciones() {
         <p className="text-sm text-gray-600">Session ID: {session_id}</p>
       </header>
 
-      {cargando && <p>Cargando segmentaciones...</p>}
+      {cargando && <p>Cargando…</p>}
       {error && <div className="bg-red-100 text-red-700 px-3 py-2 rounded mb-4">{error}</div>}
 
-      {/* Cuando no haya segmentaciones (ni 2D ni 3D) */}
-      {noHayNada && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-gray-700 mb-3">Esta serie no tiene segmentaciones almacenadas.</p>
-          <button
-            onClick={() => navigate("/historial")}
-            className="px-5 py-2 rounded border border-gray-300 hover:bg-gray-100"
-          >
-            Volver al historial
-          </button>
-        </div>
-      )}
-
-      {/* SEGMENTACIONES 2D */}
-      {items2d.length > 0 && (
-        <>
-          <h2 className="text-xl font-semibold mb-3">Segmentaciones 2D</h2>
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 mb-8">
-            {items2d.map((it) => (
-              <div
-                key={it.archivodicomid}
-                className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm"
-              >
-                {/* preview */}
+      {/* 2D */}
+      <section className="mb-8">
+        <h2 className="font-semibold text-lg mb-3">Segmentaciones 2D</h2>
+        {items2D.length === 0 ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-sm text-gray-600">
+            No hay segmentaciones 2D.
+          </div>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {items2D.map((it) => (
+              <div key={it.archivodicomid} className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
                 <div className="bg-gray-100 flex items-center justify-center h-48">
                   {it.mask_path ? (
-                    <img
-                      src={`${API}${it.mask_path}`}
-                      alt="Máscara"
-                      className="max-h-48 object-contain"
-                    />
+                    <img src={`${API}${it.mask_path}`} alt="Máscara" className="max-h-48 object-contain" />
                   ) : (
                     <span className="text-gray-500 text-sm">Sin máscara disponible</span>
                   )}
                 </div>
-
-                {/* métricas */}
                 <div className="p-4 text-sm">
                   <div className="flex flex-wrap gap-x-6 gap-y-1 mb-3">
-                    <span>
-                      <strong>Altura:</strong> {it.altura} mm
-                    </span>
-                    <span>
-                      <strong>Longitud:</strong> {it.longitud} mm
-                    </span>
-                    <span>
-                      <strong>Ancho:</strong> {it.ancho} mm
-                    </span>
+                    <span><strong>Altura:</strong> {it.altura} mm</span>
+                    <span><strong>Longitud:</strong> {it.longitud} mm</span>
+                    <span><strong>Ancho:</strong> {it.ancho} mm</span>
                   </div>
-                  <div className="mb-3">
-                    <strong>Volumen:</strong> {it.volumen} {it.unidad || "mm³"}
-                  </div>
-                  <div className="text-gray-600 mb-2">
-                    <strong>Tipo:</strong> {it.tipoprotesis}
-                  </div>
+                  <div className="mb-3"><strong>Volumen:</strong> {it.volumen} {it.unidad || "mm³"}</div>
+                  <div className="text-gray-600 mb-2"><strong>Tipo:</strong> {it.tipoprotesis}</div>
 
                   <div className="flex gap-2">
                     <button
-                      onClick={() => borrar2d(it.archivodicomid)}
+                      onClick={() => borrar2D(it.archivodicomid)}
                       className="px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
                     >
                       Borrar
@@ -217,95 +217,112 @@ export default function Segmentaciones() {
               </div>
             ))}
           </div>
-        </>
-      )}
+        )}
+      </section>
 
-      {/* SEGMENTACIONES 3D */}
-      {items3d.length > 0 && (
-        <>
-          <h2 className="text-xl font-semibold mb-3">Segmentaciones 3D</h2>
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {items3d.map((s3d) => (
-              <div
-                key={s3d.id}
-                className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm"
-              >
-                {/* previews (axial / sagital / coronal) */}
-                <div className="grid grid-cols-3 gap-2 bg-gray-100 p-2 h-48">
-                  <div className="flex items-center justify-center bg-white rounded">
-                    {s3d.thumb_axial ? (
-                      <img
-                        src={`${API}${s3d.thumb_axial}`}
-                        alt="Axial"
-                        className="max-h-44 object-contain"
-                      />
-                    ) : (
-                      <span className="text-gray-400 text-xs">Axial</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-center bg-white rounded">
-                    {s3d.thumb_sagittal ? (
-                      <img
-                        src={`${API}${s3d.thumb_sagittal}`}
-                        alt="Sagital"
-                        className="max-h-44 object-contain"
-                      />
-                    ) : (
-                      <span className="text-gray-400 text-xs">Sagital</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-center bg-white rounded">
-                    {s3d.thumb_coronal ? (
-                      <img
-                        src={`${API}${s3d.thumb_coronal}`}
-                        alt="Coronal"
-                        className="max-h-44 object-contain"
-                      />
-                    ) : (
-                      <span className="text-gray-400 text-xs">Coronal</span>
-                    )}
-                  </div>
+      {/* 3D */}
+      <section className="mb-10">
+        <h2 className="font-semibold text-lg mb-3">Segmentaciones 3D</h2>
+
+        {items3D.length === 0 ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-sm text-gray-600">
+            No hay segmentaciones 3D.
+          </div>
+        ) : (
+          items3D.map((s3d) => (
+            <div key={s3d.id} className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm mb-6">
+              <div className="grid grid-cols-3 gap-3 p-4 bg-gray-50">
+                <div className="h-28 bg-white border flex items-center justify-center">
+                  <img src={`${API}${s3d.thumb_axial}`} alt="axial" className="max-h-28 object-contain" />
                 </div>
-
-                {/* métricas */}
-                <div className="p-4 text-sm">
-                  <div className="mb-2">
-                    <strong>Volumen:</strong>{" "}
-                    {typeof s3d.volume_mm3 === "number" ? s3d.volume_mm3.toFixed(0) : s3d.volume_mm3} mm³
-                  </div>
-                  <div className="mb-2">
-                    <strong>Superficie:</strong>{" "}
-                    {s3d.surface_mm2 != null
-                      ? `${Number(s3d.surface_mm2).toFixed(0)} mm²`
-                      : "—"}
-                  </div>
-                  <div className="mb-2">
-                    <strong>Dimensiones (BBox):</strong>{" "}
-                    {`${Number(s3d.bbox_x_mm).toFixed(1)} × ${Number(s3d.bbox_y_mm).toFixed(1)} × ${Number(s3d.bbox_z_mm).toFixed(1)} mm`}
-                  </div>
-                  <div className="mb-2 text-gray-600">
-                    <strong>Slices:</strong> {s3d.n_slices}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => borrar3d(s3d.id)}
-                      className="px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
-                    >
-                      Borrar 3D
-                    </button>
-                  </div>
+                <div className="h-28 bg-white border flex items-center justify-center">
+                  <img src={`${API}${s3d.thumb_sagittal}`} alt="sagittal" className="max-h-28 object-contain" />
+                </div>
+                <div className="h-28 bg-white border flex items-center justify-center">
+                  <img src={`${API}${s3d.thumb_coronal}`} alt="coronal" className="max-h-28 object-contain" />
                 </div>
               </div>
-            ))}
-          </div>
-        </>
-      )}
 
-      {/* CTA cuando aún quedan segmentaciones */}
-      {(items2d.length > 0 || items3d.length > 0) && (
+              <div className="p-4 text-sm">
+                <div className="mb-1"><strong>Volumen:</strong> {Math.round(s3d.volume_mm3)} mm³</div>
+                {s3d.surface_mm2 != null && (
+                  <div className="mb-1"><strong>Superficie:</strong> {Math.round(s3d.surface_mm2)} mm²</div>
+                )}
+                <div className="mb-2">
+                  <strong>Dimensiones (BBox):</strong>{" "}
+                  {`${(s3d.bbox_x_mm).toFixed(1)} x ${(s3d.bbox_y_mm).toFixed(1)} x ${(s3d.bbox_z_mm).toFixed(1)} mm`}
+                </div>
+                <div className="mb-4"><strong>Slices:</strong> {s3d.n_slices}</div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => exportarStl(s3d.id)}
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <Download size={16} />
+                    Exportar STL
+                  </button>
+
+                  {/* NUEVO botón borrar 3D */}
+                  <button
+                    onClick={() => borrar3D(s3d.id)}
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
+                  >
+                    <Trash2 size={16} />
+                    Borrar 3D
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* Modelos STL */}
+      <section className="mb-10">
+        <h2 className="font-semibold text-lg mb-3">Modelos STL de esta serie</h2>
+
+        {modelos.length === 0 ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-sm text-gray-600">
+            No hay modelos STL generados aún.
+          </div>
+        ) : (
+          modelos.map((m) => (
+            <div key={m.id} className="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm mb-4">
+              <div className="text-sm mb-2">
+                <div className="mb-1"><strong>STL:</strong> {m.path_stl}</div>
+                <div className="mb-1"><strong>Vértices:</strong> {m.num_vertices ?? "?"}</div>
+                <div className="mb-1"><strong>Caras:</strong> {m.num_caras ?? "?"}</div>
+                <div className="mb-1"><strong>Tamaño:</strong> {m.file_size_bytes ? `${m.file_size_bytes} bytes` : "? bytes"}</div>
+                <div className="mb-1"><strong>Fecha:</strong> {m.created_at ?? ""}</div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <a
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white"
+                  href={`${API}${m.path_stl}`}
+                  download
+                >
+                  <Download size={16} />
+                  Descargar
+                </a>
+
+                <button
+                  onClick={() => borrarModelo(m.id)}
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
+                >
+                  <Trash2 size={16} />
+                  Borrar
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {items2D.length + items3D.length > 0 && (
         <div className="mt-8 text-center text-sm text-gray-600">
-          Para eliminar la serie completa, primero borra todas las segmentaciones.
+          Para eliminar la serie completa, primero borra todas las segmentaciones y modelos STL.
         </div>
       )}
     </section>

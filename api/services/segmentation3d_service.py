@@ -6,11 +6,14 @@ import pydicom
 from skimage import measure, morphology, io
 from config.db_config import get_connection
 
+
 def _serie_dir(session_id: str):
     return os.path.abspath(os.path.join("api", "static", "series", session_id))
 
+
 def _seg3d_dir(session_id: str):
     return os.path.abspath(os.path.join("api", "static", "segmentations3d", session_id))
+
 
 def _load_stack(session_id: str):
     base = _serie_dir(session_id)
@@ -21,9 +24,9 @@ def _load_stack(session_id: str):
     with open(mapping_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
 
-    # Orden consistente por nombre DICOM (si tu mapping ya garantiza orden, puedes mejorar esto)
+    # Reunir DICOMs desde el mapping
     entries = []
-    for img_png, meta in mapping.items():
+    for _, meta in mapping.items():
         dcm_name = meta.get("dicom_name")
         if not dcm_name:
             continue
@@ -34,31 +37,43 @@ def _load_stack(session_id: str):
     if not entries:
         raise ValueError("No se encontraron DICOM válidos en la serie")
 
-    # Cargar y apilar
-    slices = []
-    z_positions = []
+    # Cargar cortes y posiciones Z
+    slices, z_positions = [], []
     for p in entries:
         ds = pydicom.dcmread(p, force=True)
-        arr = ds.pixel_array.astype(np.int16)
-        slices.append(arr)
-        # Si existe ImagePositionPatient, úsala para ordenar
-        z = float(getattr(ds, "ImagePositionPatient", [0, 0, getattr(ds, "SliceLocation", 0)])[2])
+        slices.append(ds.pixel_array.astype(np.int16))
+        z = float(
+            getattr(
+                ds, "ImagePositionPatient", [0, 0, getattr(ds, "SliceLocation", 0)]
+            )[2]
+        )
         z_positions.append(z)
 
     # Ordenar por Z
     order = np.argsort(z_positions)
     stack = np.stack([slices[i] for i in order], axis=0)
 
-    # Spacing
+    # Pixel spacing (y, x) desde el primer corte ordenado
     ds0 = pydicom.dcmread(entries[order[0]], force=True)
-    px_y, px_x = ds0.PixelSpacing if hasattr(ds0, "PixelSpacing") else (1.0, 1.0)
-    slice_thk = float(getattr(ds0, "SliceThickness", 1.0))
-    spacing = (slice_thk, px_y, px_x)  # (z, y, x) mm
+    if hasattr(ds0, "PixelSpacing"):
+        px_y, px_x = float(ds0.PixelSpacing[0]), float(ds0.PixelSpacing[1])
+    else:
+        px_y, px_x = 1.0, 1.0
+
+    # >>> NUEVO: dz a partir de las posiciones Z reales (fallback a SliceThickness)
+    sorted_z = np.array(sorted(z_positions))
+    if len(sorted_z) >= 2:
+        dz_est = float(np.median(np.diff(sorted_z)))
+    else:
+        dz_est = float(getattr(ds0, "SliceThickness", 1.0))
+
+    spacing = (abs(dz_est), px_y, px_x)  # (z, y, x) en mm
 
     return stack, spacing
 
+
 def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
-    vol, spacing = _load_stack(session_id)   # (Z, Y, X)
+    vol, spacing = _load_stack(session_id)  # (Z, Y, X)
     os.makedirs(_seg3d_dir(session_id), exist_ok=True)
 
     # Umbral simple (igual filosofía que tu 2D)
@@ -93,7 +108,9 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
     # Superficie aproximada (opcional): marching cubes sobre máscara
     surface_mm2 = None
     try:
-        verts, faces, _, _ = measure.marching_cubes(mask.astype(np.uint8), level=0.5, spacing=spacing[::-1])  # spacing en (x,y,z)
+        verts, faces, _, _ = measure.marching_cubes(
+            mask.astype(np.uint8), level=0.5, spacing=spacing[::-1]
+        )  # spacing en (x,y,z)
         # área de malla
         tri_verts = verts[faces]
         v1 = tri_verts[:, 1, :] - tri_verts[:, 0, :]
@@ -113,32 +130,31 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
     yc = mask.shape[1] // 2
     xc = mask.shape[2] // 2
 
-    axial_png_abs   = os.path.join(base_out, "axial.png")     # corte en Z
-    sagittal_png_abs= os.path.join(base_out, "sagittal.png")  # corte en X
-    coronal_png_abs = os.path.join(base_out, "coronal.png")   # corte en Y
+    axial_png_abs = os.path.join(base_out, "axial.png")  # corte en Z
+    sagittal_png_abs = os.path.join(base_out, "sagittal.png")  # corte en X
+    coronal_png_abs = os.path.join(base_out, "coronal.png")  # corte en Y
 
-    io.imsave(axial_png_abs,   (mask[zc, :, :].astype(np.uint8) * 255))
-    io.imsave(sagittal_png_abs,(mask[:, :, xc].astype(np.uint8) * 255))
+    io.imsave(axial_png_abs, (mask[zc, :, :].astype(np.uint8) * 255))
+    io.imsave(sagittal_png_abs, (mask[:, :, xc].astype(np.uint8) * 255))
     io.imsave(coronal_png_abs, (mask[:, yc, :].astype(np.uint8) * 255))
 
     # Rutas públicas
     public_base = f"/static/segmentations3d/{session_id}"
-    npy_pub   = f"{public_base}/mask.npy"
+    npy_pub = f"{public_base}/mask.npy"
     axial_pub = f"{public_base}/axial.png"
-    sag_pub   = f"{public_base}/sagittal.png"
-    cor_pub   = f"{public_base}/coronal.png"
-
+    sag_pub = f"{public_base}/sagittal.png"
+    cor_pub = f"{public_base}/coronal.png"
 
     # --- antes del INSERT:
     volume_mm3 = float(volume_mm3)
-    surface_mm2 = (float(surface_mm2) if surface_mm2 is not None else None)
+    surface_mm2 = float(surface_mm2) if surface_mm2 is not None else None
     bbox_x_mm = float(bbox_x_mm)
     bbox_y_mm = float(bbox_y_mm)
     bbox_z_mm = float(bbox_z_mm)
 
     # Persistir en DB
     conn = get_connection()
-    cur  = conn.cursor()
+    cur = conn.cursor()
     cur.execute(
         """
         INSERT INTO segmentacion3d
@@ -149,25 +165,33 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
         RETURNING id
         """,
         (
-            session_id, int(user_id), int(mask.shape[0]),
-            volume_mm3, surface_mm2,
-            bbox_x_mm, bbox_y_mm, bbox_z_mm,
-            npy_pub, axial_pub, sag_pub, cor_pub
-        )
+            session_id,
+            int(user_id),
+            int(mask.shape[0]),
+            volume_mm3,
+            surface_mm2,
+            bbox_x_mm,
+            bbox_y_mm,
+            bbox_z_mm,
+            npy_pub,
+            axial_pub,
+            sag_pub,
+            cor_pub,
+        ),
     )
     seg3d_id = cur.fetchone()[0]
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     return {
         "message": "Segmentación 3D creada",
         "seg3d_id": seg3d_id,
         "volume_mm3": volume_mm3,
         "surface_mm2": surface_mm2,
-        "thumbs": {
-            "axial": axial_pub, "sagittal": sag_pub, "coronal": cor_pub
-        }
+        "thumbs": {"axial": axial_pub, "sagittal": sag_pub, "coronal": cor_pub},
     }
+
 
 def listar_segmentaciones_3d(session_id: str, user_id: int):
     conn = get_connection()
@@ -181,64 +205,80 @@ def listar_segmentaciones_3d(session_id: str, user_id: int):
         WHERE session_id = %s AND user_id = %s
         ORDER BY created_at DESC
         """,
-        (session_id, user_id)
+        (session_id, user_id),
     )
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     out = []
     for r in rows:
-        out.append({
-            "id": r[0],
-            "n_slices": r[1],
-            "volume_mm3": float(r[2]),
-            "surface_mm2": (float(r[3]) if r[3] is not None else None),
-            "bbox_x_mm": float(r[4]),
-            "bbox_y_mm": float(r[5]),
-            "bbox_z_mm": float(r[6]),
-            "mask_npy_path": r[7],
-            "thumb_axial": r[8],
-            "thumb_sagittal": r[9],
-            "thumb_coronal": r[10],
-            "created_at": r[11].isoformat() if r[11] else None
-        })
+        out.append(
+            {
+                "id": r[0],
+                "n_slices": r[1],
+                "volume_mm3": float(r[2]),
+                "surface_mm2": (float(r[3]) if r[3] is not None else None),
+                "bbox_x_mm": float(r[4]),
+                "bbox_y_mm": float(r[5]),
+                "bbox_z_mm": float(r[6]),
+                "mask_npy_path": r[7],
+                "thumb_axial": r[8],
+                "thumb_sagittal": r[9],
+                "thumb_coronal": r[10],
+                "created_at": r[11].isoformat() if r[11] else None,
+            }
+        )
     return out
+
 
 def borrar_segmentacion_3d(seg3d_id: int, user_id: int) -> bool:
     # También intentamos borrar archivos asociados
-    conn = get_connection(); cur = conn.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
     cur.execute(
         "SELECT session_id, mask_npy_path, thumb_axial, thumb_sagittal, thumb_coronal FROM segmentacion3d WHERE id = %s AND user_id = %s",
-        (seg3d_id, user_id)
+        (seg3d_id, user_id),
     )
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close()
+        cur.close()
+        conn.close()
         return False
 
     session_id, npy_pub, ax_pub, sg_pub, cr_pub = row
     base = _seg3d_dir(session_id)
 
     # Borrar registro
-    cur.execute("DELETE FROM segmentacion3d WHERE id = %s AND user_id = %s", (seg3d_id, user_id))
+    cur.execute(
+        "DELETE FROM segmentacion3d WHERE id = %s AND user_id = %s", (seg3d_id, user_id)
+    )
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     # Borrar archivos si existen
     def rm(pub_path):
-        if not pub_path: return
+        if not pub_path:
+            return
         fname = os.path.basename(pub_path)
         p = os.path.join(base, fname)
         if os.path.isfile(p):
-            try: os.remove(p)
-            except: pass
+            try:
+                os.remove(p)
+            except:
+                pass
 
-    rm(npy_pub); rm(ax_pub); rm(sg_pub); rm(cr_pub)
+    rm(npy_pub)
+    rm(ax_pub)
+    rm(sg_pub)
+    rm(cr_pub)
 
     # Si la carpeta queda vacía, puedes opcionalmente eliminarla
     try:
         if os.path.isdir(base) and not os.listdir(base):
             os.rmdir(base)
-    except: pass
+    except:
+        pass
 
     return True

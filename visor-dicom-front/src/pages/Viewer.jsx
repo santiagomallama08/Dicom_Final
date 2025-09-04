@@ -279,7 +279,7 @@ export default function Viewer() {
 
         <button
           onClick={segmentarSerie3D}
-          className="ml-0 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded shadow transition duration-200"
+          className="px-6 py-2 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white font-semibold rounded shadow transition duration-200"
         >
           Segmentar serie (3D)
         </button>
