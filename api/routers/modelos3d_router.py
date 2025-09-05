@@ -1,5 +1,5 @@
 # api/routers/modelos3d_router.py
-from fastapi import APIRouter, HTTPException, Path, Header, Query
+from fastapi import APIRouter, HTTPException, Path, Header, Query, Form
 from typing import Optional
 
 from api.services.modelos3d_services import (
@@ -14,14 +14,16 @@ router = APIRouter(prefix="/series", tags=["Modelos3D"])
 def export_stl(
     session_id: str = Path(...),
     x_user_id: int = Header(None, alias="X-User-Id"),
-    seg3d_id: Optional[int] = Query(None, description="ID de segmentación 3D; si no se envía, usa la más reciente")
+    seg3d_id_q: Optional[int] = Query(None, description="ID de segmentación 3D (query)"),
+    seg3d_id_f: Optional[int] = Form(None, description="ID de segmentación 3D (form)")
 ):
     if not x_user_id:
         raise HTTPException(status_code=401, detail="Falta X-User-Id")
 
+    seg3d_id = seg3d_id_f if seg3d_id_f is not None else seg3d_id_q  
+
     try:
-        result = exportar_stl_desde_seg3d(session_id, x_user_id, seg3d_id)
-        return result
+        return exportar_stl_desde_seg3d(session_id, int(x_user_id), seg3d_id)
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except FileNotFoundError as fe:
@@ -37,7 +39,7 @@ def listar_modelos(
     if not x_user_id:
         raise HTTPException(status_code=401, detail="Falta X-User-Id")
     try:
-        return listar_modelos3d(session_id, x_user_id)
+        return listar_modelos3d(session_id, int(x_user_id))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -49,7 +51,7 @@ def eliminar_modelo(
     if not x_user_id:
         raise HTTPException(status_code=401, detail="Falta X-User-Id")
     try:
-        ok = borrar_modelo3d(modelo_id, x_user_id)
+        ok = borrar_modelo3d(int(modelo_id), int(x_user_id))
         if not ok:
             raise HTTPException(status_code=404, detail="Modelo no encontrado")
         return {"message": "Modelo borrado"}

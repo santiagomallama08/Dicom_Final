@@ -6,8 +6,10 @@ import numpy as np
 from skimage import measure
 
 from config.db_config import get_connection
+
 # Reutilizamos el spacing desde la carga del volumen
 from api.services.segmentation3d_service import _load_stack, _seg3d_dir
+
 
 def _models_dir(session_id: str) -> str:
     """
@@ -18,6 +20,7 @@ def _models_dir(session_id: str) -> str:
     os.makedirs(base, exist_ok=True)
     return base
 
+
 def _public_models_dir(session_id: str) -> str:
     """
     Carpeta pública para servir por FastAPI/StaticFiles:
@@ -25,7 +28,10 @@ def _public_models_dir(session_id: str) -> str:
     """
     return f"/static/models/{session_id}"
 
-def _write_binary_stl(path: str, vertices: np.ndarray, faces: np.ndarray, name: str = b"dicom_mesh") -> None:
+
+def _write_binary_stl(
+    path: str, vertices: np.ndarray, faces: np.ndarray, name: str = b"dicom_mesh"
+) -> None:
     """
     Escribe un STL binario simple. Un STL binario requiere:
     - 80 bytes de header
@@ -37,7 +43,7 @@ def _write_binary_stl(path: str, vertices: np.ndarray, faces: np.ndarray, name: 
     faces = np.asarray(faces, dtype=np.int32)
 
     with open(path, "wb") as f:
-        header = (name[:80]).ljust(80, b' ')
+        header = (name[:80]).ljust(80, b" ")
         f.write(header)
         f.write(struct.pack("<I", faces.shape[0]))
 
@@ -52,6 +58,7 @@ def _write_binary_stl(path: str, vertices: np.ndarray, faces: np.ndarray, name: 
             # attribute byte count
             f.write(struct.pack("<H", 0))
 
+
 def _resolve_mask_npy_abs(session_id: str, mask_npy_path_public: str) -> str:
     """
     Convierte una ruta pública (p.ej., /static/segmentations3d/<session_id>/mask.npy)
@@ -63,7 +70,9 @@ def _resolve_mask_npy_abs(session_id: str, mask_npy_path_public: str) -> str:
 
     # Si es pública (empieza por /static), la mapeamos a api/static
     if mask_npy_path_public.startswith("/static/"):
-        rel = mask_npy_path_public[len("/static/"):]  # segmentations3d/<session_id>/mask.npy
+        rel = mask_npy_path_public[
+            len("/static/") :
+        ]  # segmentations3d/<session_id>/mask.npy
         abs_path = os.path.abspath(os.path.join("api", "static", rel))
         return abs_path
 
@@ -72,7 +81,10 @@ def _resolve_mask_npy_abs(session_id: str, mask_npy_path_public: str) -> str:
     candidate = os.path.join(base, os.path.basename(mask_npy_path_public))
     return os.path.abspath(candidate)
 
-def exportar_stl_desde_seg3d(session_id: str, user_id: int, seg3d_id: int | None = None) -> dict:
+
+def exportar_stl_desde_seg3d(
+    session_id: str, user_id: int, seg3d_id: int | None = None
+) -> dict:
     """
     - Busca la segmentación 3D más reciente (o la dada por seg3d_id) para session_id/user_id
     - Carga mask.npy
@@ -94,7 +106,7 @@ def exportar_stl_desde_seg3d(session_id: str, user_id: int, seg3d_id: int | None
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (session_id, user_id)
+            (session_id, user_id),
         )
     else:
         cur.execute(
@@ -103,17 +115,19 @@ def exportar_stl_desde_seg3d(session_id: str, user_id: int, seg3d_id: int | None
             FROM segmentacion3d
             WHERE id = %s AND session_id = %s AND user_id = %s
             """,
-            (seg3d_id, session_id, user_id)
+            (seg3d_id, session_id, user_id),
         )
 
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close()
+        cur.close()
+        conn.close()
         raise ValueError("No hay segmentación 3D disponible para exportar STL.")
 
     seg3d_id = int(row[0])
     mask_npy_public = row[1]
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     # 2) Cargar máscara y spacing
     mask_path_abs = _resolve_mask_npy_abs(session_id, mask_npy_public)
@@ -122,15 +136,15 @@ def exportar_stl_desde_seg3d(session_id: str, user_id: int, seg3d_id: int | None
 
     mask = np.load(mask_path_abs)
     # Garantizar boolean/uint8
-    mask = (mask > 0)
+    mask = mask > 0
 
     # Obtener spacing en mm desde la serie
-    _, spacing = _load_stack(session_id)  # spacing = (dz, dy, dx) en mm
+    _, spacing, _ = _load_stack(session_id)  # spacing = (dz, dy, dx) en mm
 
     # 3) Marching Cubes
-    # Ojo: marching_cubes espera spacing por eje del array (en nuestro mask está (Z, Y, X)).
-    # Para mapear a (x, y, z) físicos, usamos spacing[::-1] = (dx, dy, dz)
-    verts, faces, _, _ = measure.marching_cubes(mask.astype(np.uint8), level=0.5, spacing=spacing[::-1])
+    verts, faces, _, _ = measure.marching_cubes(
+        mask.astype(np.uint8), level=0.5, spacing=spacing[::-1]  # (dx, dy, dz)
+    )
 
     num_vertices = int(verts.shape[0])
     num_caras = int(faces.shape[0])
@@ -141,36 +155,49 @@ def exportar_stl_desde_seg3d(session_id: str, user_id: int, seg3d_id: int | None
     stl_filename = f"{ts}_seg3d_{seg3d_id}.stl"
     stl_abs_path = os.path.join(out_dir_abs, stl_filename)
     _write_binary_stl(stl_abs_path, verts, faces, name=b"dicom_3d_mesh")
+    file_size_bytes = int(os.path.getsize(stl_abs_path))
 
     # Ruta pública
     stl_pub = f"{_public_models_dir(session_id)}/{stl_filename}"
 
-    # 5) Guardar en DB
+    # 5) Guardar en DB (incluyendo file_size_bytes)
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO modelo3d (session_id, user_id, seg3d_id, path_stl, num_vertices, num_caras)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO modelo3d (session_id, user_id, seg3d_id, path_stl,
+                              num_vertices, num_caras, file_size_bytes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id, created_at
         """,
-        (session_id, int(user_id), seg3d_id, stl_pub, num_vertices, num_caras)
+        (
+            session_id,
+            int(user_id),
+            seg3d_id,
+            stl_pub,
+            num_vertices,
+            num_caras,
+            file_size_bytes,
+        ),
     )
     row = cur.fetchone()
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     modelo_id, created_at = row[0], row[1]
 
     return {
         "message": "STL generado",
-        "modelo_id": modelo_id,
+        "id": modelo_id,
         "path_stl": stl_pub,
         "num_vertices": num_vertices,
         "num_caras": num_caras,
+        "file_size_bytes": file_size_bytes,
         "seg3d_id": seg3d_id,
         "created_at": created_at.isoformat() if created_at else None,
     }
+
 
 def listar_modelos3d(session_id: str, user_id: int) -> list:
     """
@@ -180,27 +207,32 @@ def listar_modelos3d(session_id: str, user_id: int) -> list:
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT id, seg3d_id, path_stl, num_vertices, num_caras, created_at
+        SELECT id, seg3d_id, path_stl, num_vertices, num_caras, file_size_bytes, created_at
         FROM modelo3d
         WHERE session_id = %s AND user_id = %s
         ORDER BY created_at DESC
         """,
-        (session_id, user_id)
+        (session_id, user_id),
     )
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     out = []
     for r in rows:
-        out.append({
-            "id": r[0],
-            "seg3d_id": r[1],
-            "path_stl": r[2],
-            "num_vertices": r[3],
-            "num_caras": r[4],
-            "created_at": r[5].isoformat() if r[5] else None
-        })
+        out.append(
+            {
+                "id": r[0],
+                "seg3d_id": r[1],
+                "path_stl": r[2],
+                "num_vertices": r[3],
+                "num_caras": r[4],
+                "file_size_bytes": r[5],
+                "created_at": r[6].isoformat() if r[6] else None,
+            }
+        )
     return out
+
 
 def borrar_modelo3d(modelo_id: int, user_id: int) -> bool:
     """
@@ -210,22 +242,26 @@ def borrar_modelo3d(modelo_id: int, user_id: int) -> bool:
     cur = conn.cursor()
     cur.execute(
         "SELECT session_id, path_stl FROM modelo3d WHERE id = %s AND user_id = %s",
-        (modelo_id, user_id)
+        (modelo_id, user_id),
     )
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close()
+        cur.close()
+        conn.close()
         return False
 
     session_id, path_pub = row
     # Borrar registro
-    cur.execute("DELETE FROM modelo3d WHERE id = %s AND user_id = %s", (modelo_id, user_id))
+    cur.execute(
+        "DELETE FROM modelo3d WHERE id = %s AND user_id = %s", (modelo_id, user_id)
+    )
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
     # Borrar archivo
     if path_pub and path_pub.startswith("/static/"):
-        rel = path_pub[len("/static/"):]  # models/<session>/file.stl
+        rel = path_pub[len("/static/") :]  # models/<session>/file.stl
         abs_path = os.path.abspath(os.path.join("api", "static", rel))
         if os.path.isfile(abs_path):
             try:

@@ -37,9 +37,10 @@ export default function Segmentaciones() {
     setItems3D(await res.json());
   };
 
+  // ✅ endpoints correctos para modelos
   const cargarModelos = async () => {
     try {
-      const res = await fetch(`${API}/modelos/series/${session_id}`, {
+      const res = await fetch(`${API}/series/${session_id}/modelos3d`, {
         headers: { ...userHeaders() },
       });
       if (!res.ok) {
@@ -77,6 +78,82 @@ export default function Segmentaciones() {
     }
   };
 
+  // ✅ exportar STL con los endpoints correctos (FormData)
+  const exportarStl = async (seg3dId) => {
+    try {
+      const form = new FormData();
+      form.append("seg3d_id", String(seg3dId));
+
+      // Construir headers y quitar Content-Type si viene
+      const headers = { ...userHeaders() };
+      delete headers["Content-Type"];
+      delete headers["content-type"]; // por si acaso
+
+      const res = await fetch(`${API}/series/${session_id}/export-stl`, {
+        method: "POST",
+        headers,
+        body: form,
+      });
+
+      // Manejo robusto de respuesta (JSON o texto)
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        const txt = await res.text();
+        throw new Error(txt || "Respuesta inválida del servidor");
+      }
+      if (!res.ok) throw new Error(data?.detail || data?.error || "No se pudo exportar STL");
+
+      // Normalizar clave id por si backend antiguo devolviera "modelo_id"
+      const nuevo = { ...data, id: data.id ?? data.modelo_id };
+
+      // Agregar a la lista sin recargar todo
+      setModelos((prev) => [nuevo, ...prev]);
+
+      await Swal.fire({
+        icon: "success",
+        title: "STL generado",
+        html: `
+        <div class="text-sm text-left">
+          <div><b>Archivo:</b> ${nuevo.path_stl}</div>
+          <div><b>Tamaño:</b> ${nuevo.file_size_bytes ?? "?"} bytes</div>
+          <div><b>Vértices:</b> ${nuevo.num_vertices ?? "?"}</div>
+          <div><b>Caras:</b> ${nuevo.num_caras ?? "?"}</div>
+        </div>
+      `,
+        confirmButtonText: "OK",
+      });
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Error", text: e.message || "No se pudo exportar STL" });
+    }
+  };
+
+  // ✅ borrar modelo con endpoint correcto
+  const borrarModelo = async (modeloId) => {
+    const ok = await Swal.fire({
+      title: "¿Eliminar este STL?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#d33",
+    });
+    if (!ok.isConfirmed) return;
+
+    try {
+      const res = await fetch(`${API}/series/modelos3d/${modeloId}`, {
+        method: "DELETE",
+        headers: { ...userHeaders() },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setModelos((prev) => prev.filter((m) => m.id !== modeloId));
+      Swal.fire({ icon: "success", title: "STL eliminado", timer: 1200, showConfirmButton: false });
+    } catch {
+      Swal.fire({ icon: "error", title: "Error", text: "No se pudo eliminar el STL." });
+    }
+  };
+
   // NUEVO: eliminar segmentación 3D
   const borrar3D = async (seg3dId) => {
     const ok = await Swal.fire({
@@ -103,46 +180,6 @@ export default function Segmentaciones() {
     }
   };
 
-  const exportarStl = async (seg3dId) => {
-    try {
-      const res = await fetch(`${API}/modelos/exportar-stl`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...userHeaders() },
-        body: JSON.stringify({ seg3d_id: seg3dId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail || data?.error || "No se pudo exportar STL");
-      await cargarModelos();
-      Swal.fire({ icon: "success", title: "STL generado", timer: 1200, showConfirmButton: false });
-    } catch (e) {
-      Swal.fire({ icon: "error", title: "Error", text: e.message || "No se pudo exportar STL" });
-    }
-  };
-
-  const borrarModelo = async (modeloId) => {
-    const ok = await Swal.fire({
-      title: "¿Eliminar este STL?",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Eliminar",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#d33",
-    });
-    if (!ok.isConfirmed) return;
-
-    try {
-      const res = await fetch(`${API}/modelos/${modeloId}`, {
-        method: "DELETE",
-        headers: { ...userHeaders() },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      setModelos((prev) => prev.filter((m) => m.id !== modeloId));
-      Swal.fire({ icon: "success", title: "STL eliminado", timer: 1200, showConfirmButton: false });
-    } catch {
-      Swal.fire({ icon: "error", title: "Error", text: "No se pudo eliminar el STL." });
-    }
-  };
-
   useEffect(() => {
     (async () => {
       setCargando(true);
@@ -160,7 +197,6 @@ export default function Segmentaciones() {
 
   return (
     <section className="min-h-screen bg-white text-black p-8">
-      {/* Volver */}
       <button
         onClick={() => navigate("/historial")}
         className="mb-6 inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-900 text-white hover:opacity-90"
@@ -204,7 +240,6 @@ export default function Segmentaciones() {
                   </div>
                   <div className="mb-3"><strong>Volumen:</strong> {it.volumen} {it.unidad || "mm³"}</div>
                   <div className="text-gray-600 mb-2"><strong>Tipo:</strong> {it.tipoprotesis}</div>
-
                   <div className="flex gap-2">
                     <button
                       onClick={() => borrar2D(it.archivodicomid)}
@@ -223,7 +258,6 @@ export default function Segmentaciones() {
       {/* 3D */}
       <section className="mb-10">
         <h2 className="font-semibold text-lg mb-3">Segmentaciones 3D</h2>
-
         {items3D.length === 0 ? (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-sm text-gray-600">
             No hay segmentaciones 3D.
@@ -263,7 +297,6 @@ export default function Segmentaciones() {
                     Exportar STL
                   </button>
 
-                  {/* NUEVO botón borrar 3D */}
                   <button
                     onClick={() => borrar3D(s3d.id)}
                     className="inline-flex items-center gap-2 px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
@@ -281,7 +314,6 @@ export default function Segmentaciones() {
       {/* Modelos STL */}
       <section className="mb-10">
         <h2 className="font-semibold text-lg mb-3">Modelos STL de esta serie</h2>
-
         {modelos.length === 0 ? (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-sm text-gray-600">
             No hay modelos STL generados aún.
@@ -320,7 +352,7 @@ export default function Segmentaciones() {
         )}
       </section>
 
-      {items2D.length + items3D.length > 0 && (
+      {(items2D.length + items3D.length > 0) && (
         <div className="mt-8 text-center text-sm text-gray-600">
           Para eliminar la serie completa, primero borra todas las segmentaciones y modelos STL.
         </div>
