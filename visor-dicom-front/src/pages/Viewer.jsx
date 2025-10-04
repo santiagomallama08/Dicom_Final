@@ -21,6 +21,9 @@ export default function Viewer() {
   const [windowLevel, setWindowLevel] = useState(-500); // Contraste
   const [rotation, setRotation] = useState(0); // Grados
   const [isDragging, setIsDragging] = useState(false);
+  const [preset, setPreset] = useState("auto"); // auto | ct_bone | ct_soft | ct_lung | mr | custom
+  const [thrMin, setThrMin] = useState("");
+  const [thrMax, setThrMax] = useState("");
   const dragStart = useRef({ x: 0, y: 0 });
 
   const imageUrl = `http://localhost:8000${images[current]}`;
@@ -77,19 +80,35 @@ export default function Viewer() {
       const form = new FormData();
       form.append('session_id', session_id);
 
+      // Enviar preset si no es "auto"
+      if (preset && preset !== "auto") {
+        form.append("preset", preset);
+      }
+
+      // Si el usuario eligió "custom", enviar thr_min/thr_max si están completos
+      if (preset === "custom") {
+        if (thrMin !== "") form.append("thr_min", String(thrMin));
+        if (thrMax !== "") form.append("thr_max", String(thrMax));
+      }
+
       const res = await fetch('http://localhost:8000/segmentar-serie-3d/', {
         method: 'POST',
-        headers: userHeaders(), // incluye X-User-Id
+        headers: userHeaders(), // incluye X-User-Id; NO pongas Content-Type con FormData
         body: form
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falló la segmentación 3D');
 
+      // Mensaje distinto si la máscara salió vacía (el backend ya manda warning/message)
+      const msg = data?.warning
+        ? (data?.message || "Segmentación vacía, ajusta preset/umbrales.")
+        : `Volumen: ${Number(data.volume_mm3 || 0).toFixed(0)} mm³`;
+
       await Swal.fire({
-        icon: 'success',
-        title: 'Segmentación 3D creada',
-        text: `Volumen: ${Number(data.volume_mm3 || 0).toFixed(0)} mm³`,
+        icon: data?.warning ? 'warning' : 'success',
+        title: data?.warning ? 'Sin voxeles' : 'Segmentación 3D creada',
+        text: msg,
         showConfirmButton: true,
         confirmButtonText: 'Ver en Segs'
       });
@@ -266,6 +285,44 @@ export default function Viewer() {
         <span>Contraste: {windowLevel}</span>
         <span>Zoom: {zoom.toFixed(1)}x</span>
         <span>Rotación: {rotation}°</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <label className="text-sm text-gray-400">Preset:</label>
+        <select
+          value={preset}
+          onChange={(e) => setPreset(e.target.value)}
+          className="px-2 py-1 rounded bg-gray-800 text-white text-sm"
+          title="Tipo de segmentación 3D"
+        >
+          <option value="auto">Automático</option>
+          <option value="ct_bone">CT – Hueso</option>
+          <option value="ct_soft">CT – Tejido blando</option>
+          <option value="ct_lung">CT – Pulmón</option>
+          <option value="mr">MR – Otsu</option>
+          <option value="custom">Personalizado</option>
+        </select>
+
+        {preset === "custom" && (
+          <>
+            <input
+              type="number"
+              placeholder="thr_min"
+              value={thrMin}
+              onChange={(e) => setThrMin(e.target.value)}
+              className="w-28 px-2 py-1 rounded bg-gray-800 text-white text-sm"
+              title="Umbral mínimo"
+            />
+            <input
+              type="number"
+              placeholder="thr_max"
+              value={thrMax}
+              onChange={(e) => setThrMax(e.target.value)}
+              className="w-28 px-2 py-1 rounded bg-gray-800 text-white text-sm"
+              title="Umbral máximo"
+            />
+          </>
+        )}
       </div>
 
       {/* Botones de segmentación */}

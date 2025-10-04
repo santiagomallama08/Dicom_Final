@@ -10,8 +10,8 @@ import pydicom
 from PIL import Image
 import numpy as np
 
-from .segmentation_services import get_or_create_archivo_dicom
 
+from .segmentation_services import get_or_create_archivo_dicom
 
 def convert_dicom_zip_to_png_paths(zip_file: bytes, user_id: int) -> dict:  
     session_id = str(uuid.uuid4())

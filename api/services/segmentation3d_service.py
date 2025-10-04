@@ -9,7 +9,9 @@ from skimage import measure, morphology, io
 from config.db_config import get_connection
 from skimage.filters import threshold_otsu
 from skimage.morphology import binary_closing, ball
-
+from typing import Optional, Tuple
+from scipy.ndimage import binary_fill_holes, median_filter
+# from skimage.morphology import ellipsoid
 
 def _serie_dir(session_id: str):
     return os.path.abspath(os.path.join("api", "static", "series", session_id))
@@ -28,7 +30,6 @@ def _load_stack(session_id: str):
     with open(mapping_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
 
-    # recolectar DICOMs reales de la serie
     entries = []
     for _, meta in mapping.items():
         dcm_name = meta.get("dicom_name")
@@ -40,13 +41,11 @@ def _load_stack(session_id: str):
     if not entries:
         raise ValueError("No se encontraron DICOM válidos en la serie")
 
-    # armar info para ordenar
     enriched = []
     for p in entries:
         ds = pydicom.dcmread(p, force=True, stop_before_pixels=True)
-        # modalidad
-        modality = getattr(ds, "Modality", "").upper()
-        # z preferido
+        modality = str(getattr(ds, "Modality", "")).upper()
+
         z = None
         ipp = getattr(ds, "ImagePositionPatient", None)
         if isinstance(ipp, (list, tuple)) and len(ipp) == 3:
@@ -54,11 +53,11 @@ def _load_stack(session_id: str):
                 z = float(ipp[2])
             except Exception:
                 z = None
+
         inst = getattr(ds, "InstanceNumber", None)
         inst = int(inst) if inst is not None else None
         enriched.append((p, modality, z, inst))
 
-    # ordenar: primero por z si existe, si no por InstanceNumber, si no por nombre
     def _sort_key(t):
         p, modality, z, inst = t
         if z is not None:
@@ -69,62 +68,151 @@ def _load_stack(session_id: str):
 
     enriched.sort(key=_sort_key)
 
-    # cargar pixeles (ordenados)
     slices = []
-    for p, modality, _, _ in enriched:
+    z_values = []
+    for p, modality, z, _ in enriched:
         ds = pydicom.dcmread(p, force=True)
         arr = ds.pixel_array.astype(np.float32)
-        # guardar spacing del primer corte válido
         slices.append((arr, ds))
+        if z is not None:
+            z_values.append(z)
 
     if not slices:
         raise ValueError("No se pudieron leer los pixeles DICOM")
 
-    # spacing desde el primer corte
     ds0 = slices[0][1]
+    # Pixel spacing (Y, X)
+    px_y, px_x = 1.0, 1.0
     try:
-        px_y, px_x = [float(v) for v in ds0.PixelSpacing]
+        if hasattr(ds0, "PixelSpacing"):
+            px_y, px_x = [float(v) for v in ds0.PixelSpacing]
+        elif hasattr(ds0, "ImagerPixelSpacing"):
+            px_y, px_x = [float(v) for v in ds0.ImagerPixelSpacing]
     except Exception:
-        px_y, px_x = 1.0, 1.0
-    slice_thk = float(getattr(ds0, "SliceThickness", 1.0))
-    spacing = (slice_thk, px_y, px_x)  # (z, y, x) en mm
+        pass
 
+    # Slice spacing (Z): robusto
+    slice_thk = None
+    try:
+        slice_thk = float(getattr(ds0, "SliceThickness", None))
+    except Exception:
+        slice_thk = None
+
+    dz = None
+    if len(z_values) >= 2:
+        z_sorted = np.sort(np.array(z_values, dtype=np.float64))
+        diffs = np.diff(z_sorted)
+        diffs = diffs[np.isfinite(diffs) & (np.abs(diffs) > 1e-6)]
+        if diffs.size > 0:
+            dz = float(np.median(np.abs(diffs)))
+    if dz is None:
+        # fallback razonables
+        sbs = getattr(ds0, "SpacingBetweenSlices", None)
+        if sbs is not None:
+            try:
+                dz = float(sbs)
+            except Exception:
+                dz = None
+    if dz is None and slice_thk is not None:
+        dz = float(slice_thk)
+    if dz is None or dz <= 0:
+        dz = 1.0  # último recurso
+
+    spacing = (dz, float(px_y), float(px_x))  # (Z,Y,X) en mm
     vol = np.stack([s[0] for s in slices], axis=0)  # (Z,Y,X)
-    modality0 = getattr(ds0, "Modality", "").upper()
 
-    # HU si CT (si hay slope/intercept)
+    modality0 = str(getattr(ds0, "Modality", "")).upper()
+    # Normalización a HU para CT
     if modality0 == "CT":
         slope = float(getattr(ds0, "RescaleSlope", 1.0))
         intercept = float(getattr(ds0, "RescaleIntercept", 0.0))
-        vol = vol * slope + intercept  # ahora en HU
+        vol = vol * slope + intercept  # HU
+
+        # Recorte suave para evitar extremos locos
+        vol = np.clip(vol, -1024, 4000)
 
     return vol, spacing, modality0
 
 
-def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
-    vol, spacing, modality = _load_stack(session_id)  # vol: (Z,Y,X)
+def segmentar_serie_3d(
+    session_id: str,
+    user_id: int,
+    preset: Optional[str] = None,
+    thr_min: Optional[float] = None,
+    thr_max: Optional[float] = None,
+    min_size_voxels: int = 2000,
+    close_radius_mm: float = 1.5,
+) -> dict:
+    """
+    Segmentación 3D robusta con presets por modalidad.
+      - CT: umbrales en HU (ej: hueso)
+      - MR: Otsu + robustez
+    """
+    vol, spacing, modality = _load_stack(session_id)  # (Z,Y,X)
     os.makedirs(_seg3d_dir(session_id), exist_ok=True)
 
-    # ====== UMBRAL ======
+    # ===== 1) Pre-procesado suave (reduce ruido sal y pimienta) =====
+    # Solo si el volumen es razonable en tamaño
+    if vol.size > 2_000_000:
+        try:
+            vol = median_filter(vol, size=3)
+        except Exception:
+            pass
+
+    # ===== 2) Binarización según modalidad/preset =====
+    mask = None
+
     if modality == "CT":
-        thr = 300.0
-        mask = vol > thr
-    else:
-        vpos = vol[vol > 0]
-        if vpos.size >= 1024:
-            try:
-                thr = float(threshold_otsu(vpos.astype(np.float32)))
-                mask = vol > thr
-            except Exception:
-                thr = float(np.percentile(vpos, 95.0))
-                mask = vol > thr
+        # Presets típicos en HU
+        presets = {
+            "ct_bone": (150.0, 4000.0),
+            "ct_soft": (-300.0, 300.0),
+            "ct_lung": (-1000.0, -300.0),
+        }
+        if preset in presets:
+            tmin, tmax = presets[preset]
+            mask = (vol >= tmin) & (vol <= tmax)
+        elif thr_min is not None or thr_max is not None:
+            tmin = thr_min if thr_min is not None else np.percentile(vol, 60)
+            tmax = thr_max if thr_max is not None else np.max(vol)
+            mask = (vol >= tmin) & (vol <= tmax)
         else:
-            thr = float(np.percentile(vol, 95.0))
-            mask = vol > thr
+            # Fallback razonable para hueso
+            mask = vol > 150.0
 
-    mask = binary_closing(mask, footprint=ball(1))
-    mask = morphology.remove_small_objects(mask, min_size=2000)
+    else:
+        # MR: normaliza (percentiles) y Otsu global
+        v = vol[np.isfinite(vol)]
+        if v.size == 0:
+            mask = np.zeros_like(vol, dtype=bool)
+        else:
+            lo, hi = np.percentile(v, [2, 98])
+            if hi <= lo:
+                hi = lo + 1.0
+            vclip = np.clip(vol, lo, hi)
+            vclip = (vclip - lo) / (hi - lo + 1e-6)
+            try:
+                thr = float(threshold_otsu(vclip[vclip > 0]))
+                mask = vclip > thr
+            except Exception:
+                # último recurso: percentil alto
+                thr = float(np.percentile(vclip, 95))
+                mask = vclip > thr
 
+    # ===== 3) Morfología 3D =====
+    # Cierre anisotrópico en mm
+    r_vox = max(1, int(round(close_radius_mm / max(float(np.mean(spacing)), 1e-6))))
+    mask = binary_closing(mask, footprint=ball(r_vox))
+    # Rellena huecos internos (3D)
+    try:
+        mask = binary_fill_holes(mask)
+    except Exception:
+        pass
+
+    # Limpieza de partículas pequeñas
+    mask = morphology.remove_small_objects(mask, min_size=int(min_size_voxels))
+
+    # Mantener componente conexa más grande
     labels = measure.label(mask, connectivity=3)
     if labels.max() > 0:
         counts = np.bincount(labels.ravel())
@@ -133,15 +221,16 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
     else:
         mask = np.zeros_like(mask, dtype=bool)
 
+    # ===== 4) Métricas =====
     voxel_mm3 = float(spacing[0] * spacing[1] * spacing[2])
     voxels = int(mask.sum())
     volume_mm3 = float(voxels * voxel_mm3)
 
-    # ====== nombres únicos por segmentación ======
+    # ===== nombres únicos por segmentación =====
     base_out = _seg3d_dir(session_id)
     uid = f"{int(time.time()*1e6)}_{uuid.uuid4().hex[:8]}"
 
-    def _pub(name):  # ruta pública
+    def _pub(name):
         return f"/static/segmentations3d/{session_id}/{name}"
 
     mask_name = f"{uid}_mask.npy"
@@ -151,21 +240,24 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
 
     zc, yc, xc = mask.shape[0] // 2, mask.shape[1] // 2, mask.shape[2] // 2
     np.save(os.path.join(base_out, mask_name), mask.astype(np.uint8))
+
+    # thumbs (255/0 para evitar “low contrast”)
     io.imsave(os.path.join(base_out, ax_name), (mask[zc].astype(np.uint8) * 255))
     io.imsave(os.path.join(base_out, sg_name), (mask[:, :, xc].astype(np.uint8) * 255))
     io.imsave(os.path.join(base_out, cr_name), (mask[:, yc].astype(np.uint8) * 255))
 
     if voxels == 0:
-        # NO persistimos en DB si quedó vacía (pero dejamos thumbs únicas)
         return {
-            "message": "Segmentación vacía (umbral no encontró estructura).",
+            "message": "Segmentación vacía (ajusta preset/umbral).",
             "volume_mm3": 0.0,
             "surface_mm2": None,
             "thumbs": {"axial": _pub(ax_name), "sagittal": _pub(sg_name), "coronal": _pub(cr_name)},
             "warning": True,
+            "modality": modality,
+            "spacing_mm": {"z": spacing[0], "y": spacing[1], "x": spacing[2]},
         }
 
-    # ====== métricas superficie y bbox ======
+    # bbox físico
     coords = np.argwhere(mask)
     zmin, ymin, xmin = coords.min(axis=0)
     zmax, ymax, xmax = coords.max(axis=0)
@@ -173,6 +265,7 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
     bbox_y_mm = float((ymax - ymin + 1) * spacing[1])
     bbox_x_mm = float((xmax - xmin + 1) * spacing[2])
 
+    # Superficie
     surface_mm2 = None
     try:
         verts, faces, _, _ = measure.marching_cubes(
@@ -186,7 +279,7 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
     except Exception:
         surface_mm2 = None
 
-    # ====== guardar en DB SI hay voxels, SIEMPRE con parámetros ======
+    # Guardar en DB si hay voxels
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -226,6 +319,8 @@ def segmentar_serie_3d(session_id: str, user_id: int) -> dict:
         "thumbs": {"axial": _pub(ax_name), "sagittal": _pub(sg_name), "coronal": _pub(cr_name)},
         "bbox": {"x_mm": float(bbox_x_mm), "y_mm": float(bbox_y_mm), "z_mm": float(bbox_z_mm)},
         "n_slices": int(mask.shape[0]),
+        "modality": modality,
+        "spacing_mm": {"z": spacing[0], "y": spacing[1], "x": spacing[2]},
     }
 
 
@@ -318,3 +413,12 @@ def borrar_segmentacion_3d(seg3d_id: int, user_id: int) -> bool:
         pass
 
     return True
+
+# def _ellipsoid_mm(radius_mm: float, spacing: Tuple[float, float, float]) -> np.ndarray:
+#     """
+#     Devuelve un elemento estructurante elipsoidal 3D en voxeles a partir de un radio en mm.
+#     """
+#     rz = max(1, int(round(radius_mm / max(spacing[0], 1e-6))))
+#     ry = max(1, int(round(radius_mm / max(spacing[1], 1e-6))))
+#     rx = max(1, int(round(radius_mm / max(spacing[2], 1e-6))))
+#     return ellipsoid(rx, ry, rz)  

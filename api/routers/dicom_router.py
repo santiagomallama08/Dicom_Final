@@ -1,6 +1,7 @@
 # api/routers/dicom_router.py
 import tempfile
 from tkinter import Image
+from typing import Optional
 import uuid
 import zipfile
 from fastapi import APIRouter, Form, HTTPException, Path, UploadFile, File, Header
@@ -10,6 +11,7 @@ import numpy as np
 import pydicom
 from fastapi import Query
 import json
+from pathlib import Path
 from ..services.segmentation3d_service import segmentar_serie_3d
 
 
@@ -170,10 +172,23 @@ async def segmentar_desde_mapping(
 @router.post("/segmentar-serie-3d/")
 def segmentar_serie_3d_endpoint(
     session_id: str = Form(...),
-    x_user_id: int = Header(..., alias="X-User-Id")
+    x_user_id: int = Header(..., alias="X-User-Id"),
+    preset: Optional[str] = Form(None),
+    thr_min: Optional[float] = Form(None),
+    thr_max: Optional[float] = Form(None),
+    min_size_voxels: Optional[int] = Form(2000),
+    close_radius_mm: Optional[float] = Form(1.5),
 ):
     try:
-        result = segmentar_serie_3d(session_id, user_id=x_user_id)
+        result = segmentar_serie_3d(
+            session_id,
+            user_id=x_user_id,
+            preset=preset,
+            thr_min=thr_min,
+            thr_max=thr_max,
+            min_size_voxels=min_size_voxels,
+            close_radius_mm=close_radius_mm,
+        )
         return result
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
