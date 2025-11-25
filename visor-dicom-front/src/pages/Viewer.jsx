@@ -10,116 +10,178 @@ export default function Viewer() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [segmentacion, setSegmentacion] = useState(null);
   const [loadingSegment, setLoadingSegment] = useState(false);
+  const [loading3D, setLoading3D] = useState(false);
+  const [progressSegment, setProgressSegment] = useState(0);
+  const [progress3D, setProgress3D] = useState(0);
   const { session_id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const images = location.state?.images || [];
 
+  const [images, setImages] = useState(location.state?.images || []);
   const [current, setCurrent] = useState(0);
   const [zoom, setZoom] = useState(1.0);
-  const [windowWidth, setWindowWidth] = useState(1500); // Brillo
-  const [windowLevel, setWindowLevel] = useState(-500); // Contraste
-  const [rotation, setRotation] = useState(0); // Grados
+  const [windowWidth, setWindowWidth] = useState(1500);
+  const [windowLevel, setWindowLevel] = useState(-500);
+  const [rotation, setRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [preset, setPreset] = useState("auto"); // auto | ct_bone | ct_soft | ct_lung | mr | custom
+  const [preset, setPreset] = useState("auto");
   const [thrMin, setThrMin] = useState("");
   const [thrMax, setThrMax] = useState("");
   const dragStart = useRef({ x: 0, y: 0 });
 
-  const imageUrl = `http://localhost:8000${images[current]}`;
+  const imageUrl = images.length ? `http://localhost:8000${images[current]}` : null;
 
   const goBack = () => {
     const source = location.state?.source;
     if (source === 'historial') return navigate('/historial');
     if (source === 'upload') return navigate('/upload');
-    return navigate(-1); // fallback
+    return navigate(-1);
   };
 
-  // --- SEGMENTACIÓN 2D (EXISTENTE) ---
+  const simulateProgress2D = () => {
+    return new Promise((resolve) => {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.random() * 20;
+        if (progress >= 90) {
+          clearInterval(interval);
+          setProgressSegment(90);
+          resolve();
+        } else {
+          setProgressSegment(progress);
+        }
+      }, 150);
+    });
+  };
+
+  const simulateProgress3D = () => {
+    return new Promise((resolve) => {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.random() * 12;
+        if (progress >= 90) {
+          clearInterval(interval);
+          setProgress3D(90);
+          resolve();
+        } else {
+          setProgress3D(progress);
+        }
+      }, 200);
+    });
+  };
+
+  const eliminarImagen = async (index) => {
+    const result = await Swal.fire({
+      title: "Eliminar imagen",
+      text: "¿Estás seguro de eliminar esta imagen de la serie?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#d33",
+      background: '#1f2937',
+      color: '#fff',
+    });
+
+    if (!result.isConfirmed) return;
+
+    setImages((prev) => {
+      const updated = [...prev];
+      updated.splice(index, 1);
+      return updated;
+    });
+
+    setCurrent((prev) => Math.max(0, Math.min(prev, images.length - 2)));
+  };
+
   const segmentarImagen = async () => {
-    if (!session_id || !images[current]) {
-      console.error("Faltan session_id o imagen");
-      return;
-    }
+    if (!session_id || !images[current]) return;
 
     setLoadingSegment(true);
+    setProgressSegment(0);
+    
     try {
       const form = new FormData();
       form.append("session_id", session_id);
       const imageName = images[current].split("/").pop();
       form.append("image_name", imageName);
 
+      const progressPromise = simulateProgress2D();
+
       const response = await fetch("http://localhost:8000/segmentar-desde-mapping/", {
         method: "POST",
-        headers: {
-          ...userHeaders(), // 👈 X-User-Id
-          // NO pongas Content-Type; FormData lo maneja
-        },
+        headers: { ...userHeaders() },
         body: form,
       });
 
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("Error del backend:", text);
-        return;
-      }
-
+      await progressPromise;
       const data = await response.json();
-      setSegmentacion(data);
-      setIsModalOpen(true);
+      
+      setProgressSegment(100);
+      
+      setTimeout(() => {
+        setSegmentacion(data);
+        setIsModalOpen(true);
+      }, 300);
     } catch (error) {
-      console.error("Error al segmentar:", error);
+      console.error("Error:", error);
+      setProgressSegment(0);
     } finally {
       setLoadingSegment(false);
     }
   };
 
-  // --: SEGMENTACIÓN DE SERIE (3D) ---
   const segmentarSerie3D = async () => {
+    setLoading3D(true);
+    setProgress3D(0);
+
     try {
       const form = new FormData();
-      form.append('session_id', session_id);
+      form.append("session_id", session_id);
 
-      // Enviar preset si no es "auto"
-      if (preset && preset !== "auto") {
-        form.append("preset", preset);
-      }
-
-      // Si el usuario eligió "custom", enviar thr_min/thr_max si están completos
+      if (preset !== "auto") form.append("preset", preset);
       if (preset === "custom") {
         if (thrMin !== "") form.append("thr_min", String(thrMin));
         if (thrMax !== "") form.append("thr_max", String(thrMax));
       }
 
-      const res = await fetch('http://localhost:8000/segmentar-serie-3d/', {
-        method: 'POST',
-        headers: userHeaders(), // incluye X-User-Id; NO pongas Content-Type con FormData
-        body: form
+      const progressPromise = simulateProgress3D();
+
+      const res = await fetch("http://localhost:8000/segmentar-serie-3d/", {
+        method: "POST",
+        headers: userHeaders(),
+        body: form,
       });
 
+      await progressPromise;
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Falló la segmentación 3D');
+      
+      setProgress3D(100);
 
-      // Mensaje distinto si la máscara salió vacía (el backend ya manda warning/message)
-      const msg = data?.warning
-        ? (data?.message || "Segmentación vacía, ajusta preset/umbrales.")
-        : `Volumen: ${Number(data.volume_mm3 || 0).toFixed(0)} mm³`;
+      if (!res.ok) throw new Error(data?.error || "Falló la segmentación 3D");
 
       await Swal.fire({
-        icon: data?.warning ? 'warning' : 'success',
-        title: data?.warning ? 'Sin voxeles' : 'Segmentación 3D creada',
-        text: msg,
-        showConfirmButton: true,
-        confirmButtonText: 'Ver en Segs'
+        icon: data?.warning ? "warning" : "success",
+        title: data?.warning ? "Sin voxeles" : "Segmentación 3D lista",
+        text: data?.message || "Segmentación completada",
+        background: '#1f2937',
+        color: '#fff',
+        confirmButtonColor: '#3b82f6',
       });
 
       navigate(`/segmentaciones/${session_id}`);
     } catch (e) {
-      await Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: e.message || 'No se pudo segmentar en 3D'
+      setProgress3D(0);
+      Swal.fire({ 
+        icon: "error", 
+        title: "Error", 
+        text: e.message,
+        background: '#1f2937',
+        color: '#fff',
+        confirmButtonColor: '#ef4444',
       });
+    } finally {
+      setLoading3D(false);
     }
   };
 
@@ -134,30 +196,26 @@ export default function Viewer() {
     const deltaX = e.clientX - dragStart.current.x;
     const deltaY = e.clientY - dragStart.current.y;
 
-    // Movimiento vertical → Brillo
     if (Math.abs(deltaY) > Math.abs(deltaX)) {
       setWindowWidth((prev) => Math.max(100, prev + deltaY * 2));
-    }
-    // Movimiento horizontal → Contraste
-    else {
+    } else {
       setWindowLevel((prev) => prev + deltaX * 2);
     }
 
     dragStart.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
+  const handleMouseUp = () => setIsDragging(false);
 
   if (!session_id || !images.length) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <p className="mb-4">No se encontraron imágenes para esta sesión.</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center p-4">
+        <div className="text-center bg-gray-800 border border-gray-700 rounded-xl p-8 sm:p-12 shadow-lg">
+          <div className="text-6xl mb-4">⚠️</div>
+          <p className="mb-6 text-gray-300 text-sm sm:text-base">No se encontraron imágenes válidas.</p>
           <button
             onClick={() => navigate('/upload')}
-            className="bg-blue-600 px-4 py-2 rounded"
+            className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white px-6 py-3 rounded-lg font-semibold transition-opacity shadow-lg"
           >
             Volver a subir ZIP
           </button>
@@ -168,66 +226,72 @@ export default function Viewer() {
 
   return (
     <div
-      className="min-h-screen bg-black text-white flex flex-col items-center justify-center relative px-6 py-8"
+      className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col items-center justify-center relative px-4 sm:px-6 py-6 sm:py-8"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* Botón regresar */}
+      {/* Botón atrás */}
       <button
         onClick={goBack}
-        className="absolute top-4 left-4 p-2 text-white bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 rounded-full shadow-md transition duration-200"
-        title="Volver"
+        className="absolute top-3 left-3 sm:top-4 sm:left-4 p-2 sm:p-2.5 text-white bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] rounded-full shadow-lg hover:opacity-90 transition-opacity z-10"
       >
-        <ArrowLeft size={20} />
+        <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
       </button>
 
-      {/* Caja del visor (más grande) */}
+      {/* VISOR PRINCIPAL */}
       <div
-        className="overflow-hidden rounded-lg shadow-2xl mb-6 border border-gray-700 bg-black"
+        className="overflow-hidden rounded-lg sm:rounded-xl shadow-2xl mb-4 sm:mb-6 border border-gray-700 bg-black"
         style={{
-          width: '80vw',
-          height: '70vh',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: isDragging ? 'grabbing' : 'grab',
+          width: "min(90vw, 1200px)",
+          height: "min(60vh, 600px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: isDragging ? "grabbing" : "grab",
         }}
         onMouseDown={handleMouseDown}
       >
         <img
           src={imageUrl}
-          alt={`DICOM frame ${current}`}
+          alt={`Frame ${current}`}
           style={{
-            maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: 'contain',
+            maxWidth: "100%",
+            maxHeight: "100%",
+            objectFit: "contain",
             filter: `brightness(${windowWidth / 1000}) contrast(${(windowLevel + 1000) / 1000})`,
             transform: `scale(${zoom}) rotate(${rotation}deg)`,
-            transition: 'transform 0.2s ease',
-            pointerEvents: 'none',
+            pointerEvents: "none",
           }}
         />
       </div>
 
-      {/* Barra de navegación de imágenes */}
-      <div className="w-full max-w-2xl flex flex-col items-center mb-6">
+      {/* SLIDER DE IMÁGENES */}
+      <div className="w-full max-w-2xl flex flex-col items-center mb-4 sm:mb-6 px-2">
         <input
           type="range"
           min="0"
           max={images.length - 1}
           value={current}
           onChange={(e) => setCurrent(Number(e.target.value))}
-          className="w-full accent-blue-500"
+          className="w-full accent-blue-500 cursor-pointer"
         />
-        <div className="mt-2 text-sm text-gray-300">{`Imagen ${current + 1} / ${images.length}`}</div>
+        <div className="mt-2 text-xs sm:text-sm text-gray-300 font-medium">
+          {`Imagen ${current + 1} / ${images.length}`}
+        </div>
+
+        <button
+          onClick={() => eliminarImagen(current)}
+          className="mt-3 sm:mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg shadow-lg transition-colors text-sm sm:text-base font-medium"
+        >
+          🗑 Eliminar esta imagen
+        </button>
       </div>
 
-      {/* Controles de zoom y rotación */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 items-center text-center w-full max-w-4xl">
+      {/* CONTROLES */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 w-full max-w-5xl px-2">
         <div className="flex flex-col items-center">
-          <label className="text-xs text-gray-400 mb-1">🔆 Brillo (W)</label>
+          <label className="text-xs sm:text-sm text-gray-400 mb-2 font-medium">🔆 Brillo</label>
           <input
             type="range"
             min="500"
@@ -235,12 +299,13 @@ export default function Viewer() {
             step="10"
             value={windowWidth}
             onChange={(e) => setWindowWidth(Number(e.target.value))}
-            className="w-40 accent-yellow-500"
+            className="w-full max-w-[160px] accent-yellow-500 cursor-pointer"
           />
+          <span className="text-xs text-gray-500 mt-1">{windowWidth}</span>
         </div>
 
         <div className="flex flex-col items-center">
-          <label className="text-xs text-gray-400 mb-1">🌑 Contraste (L)</label>
+          <label className="text-xs sm:text-sm text-gray-400 mb-2 font-medium">🌑 Contraste</label>
           <input
             type="range"
             min="-1000"
@@ -248,12 +313,13 @@ export default function Viewer() {
             step="10"
             value={windowLevel}
             onChange={(e) => setWindowLevel(Number(e.target.value))}
-            className="w-40 accent-gray-400"
+            className="w-full max-w-[160px] accent-gray-400 cursor-pointer"
           />
+          <span className="text-xs text-gray-500 mt-1">{windowLevel}</span>
         </div>
 
         <div className="flex flex-col items-center">
-          <label className="text-xs text-gray-400 mb-1">🔍 Zoom</label>
+          <label className="text-xs sm:text-sm text-gray-400 mb-2 font-medium">🔍 Zoom</label>
           <input
             type="range"
             min="0.5"
@@ -261,12 +327,13 @@ export default function Viewer() {
             step="0.1"
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
-            className="w-40 accent-purple-500"
+            className="w-full max-w-[160px] accent-purple-500 cursor-pointer"
           />
+          <span className="text-xs text-gray-500 mt-1">{zoom.toFixed(1)}x</span>
         </div>
 
         <div className="flex flex-col items-center">
-          <label className="text-xs text-gray-400 mb-1">↻ Rotar</label>
+          <label className="text-xs sm:text-sm text-gray-400 mb-2 font-medium">↻ Rotar</label>
           <input
             type="range"
             min="0"
@@ -274,71 +341,79 @@ export default function Viewer() {
             step="1"
             value={rotation}
             onChange={(e) => setRotation(Number(e.target.value))}
-            className="w-40 accent-blue-500"
+            className="w-full max-w-[160px] accent-blue-500 cursor-pointer"
           />
+          <span className="text-xs text-gray-500 mt-1">{rotation}°</span>
         </div>
       </div>
 
-      {/* Valores actuales (opcional mostrar) */}
-      <div className="text-sm text-gray-400 flex gap-4 flex-wrap justify-center mb-4">
-        <span>Brillo: {windowWidth}</span>
-        <span>Contraste: {windowLevel}</span>
-        <span>Zoom: {zoom.toFixed(1)}x</span>
-        <span>Rotación: {rotation}°</span>
-      </div>
+      {/* BARRAS DE PROGRESO */}
+      {loadingSegment && (
+        <div className="w-full max-w-md mb-4 sm:mb-6 px-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs sm:text-sm font-medium text-gray-300">
+              Segmentando imagen 2D...
+            </span>
+            <span className="text-xs sm:text-sm font-semibold text-purple-400">
+              {Math.round(progressSegment)}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5 sm:h-3 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] h-2.5 sm:h-3 rounded-full transition-all duration-300 ease-out relative"
+              style={{ width: `${progressSegment}%` }}
+            >
+              <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <label className="text-sm text-gray-400">Preset:</label>
-        <select
-          value={preset}
-          onChange={(e) => setPreset(e.target.value)}
-          className="px-2 py-1 rounded bg-gray-800 text-white text-sm"
-          title="Tipo de segmentación 3D"
-        >
-          <option value="auto">Automático</option>
-          <option value="ct_bone">CT – Hueso</option>
-          <option value="ct_soft">CT – Tejido blando</option>
-          <option value="ct_lung">CT – Pulmón</option>
-          <option value="mr">MR – Otsu</option>
-          <option value="custom">Personalizado</option>
-        </select>
+      {loading3D && (
+        <div className="w-full max-w-md mb-4 sm:mb-6 px-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs sm:text-sm font-medium text-gray-300">
+              Segmentando serie 3D...
+            </span>
+            <span className="text-xs sm:text-sm font-semibold text-purple-400">
+              {Math.round(progress3D)}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5 sm:h-3 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] h-2.5 sm:h-3 rounded-full transition-all duration-300 ease-out relative"
+              style={{ width: `${progress3D}%` }}
+            >
+              <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      )}
 
-        {preset === "custom" && (
-          <>
-            <input
-              type="number"
-              placeholder="thr_min"
-              value={thrMin}
-              onChange={(e) => setThrMin(e.target.value)}
-              className="w-28 px-2 py-1 rounded bg-gray-800 text-white text-sm"
-              title="Umbral mínimo"
-            />
-            <input
-              type="number"
-              placeholder="thr_max"
-              value={thrMax}
-              onChange={(e) => setThrMax(e.target.value)}
-              className="w-28 px-2 py-1 rounded bg-gray-800 text-white text-sm"
-              title="Umbral máximo"
-            />
-          </>
-        )}
-      </div>
-
-      {/* Botones de segmentación */}
-      <div className="flex items-center gap-3">
+      {/* SEGMENTACIÓN */}
+      <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full max-w-2xl px-2">
         <button
           onClick={segmentarImagen}
-          className="px-6 py-2 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white font-semibold rounded shadow transition duration-200"
+          disabled={loadingSegment}
+          className={`w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 text-white font-semibold rounded-lg shadow-lg transition-all text-sm sm:text-base ${
+            loadingSegment
+              ? 'bg-gray-600 cursor-not-allowed'
+              : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
+          }`}
         >
-          {loadingSegment ? 'Segmentando...' : 'Segmentar esta imagen'}
+          {loadingSegment ? "Segmentando..." : "Segmentar esta imagen"}
         </button>
 
         <button
           onClick={segmentarSerie3D}
-          className="px-6 py-2 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90 text-white font-semibold rounded shadow transition duration-200"
+          disabled={loading3D}
+          className={`w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 text-white font-semibold rounded-lg shadow-lg transition-all text-sm sm:text-base ${
+            loading3D
+              ? 'bg-gray-600 cursor-not-allowed'
+              : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
+          }`}
         >
-          Segmentar serie (3D)
+          {loading3D ? "Procesando 3D..." : "Segmentar serie (3D)"}
         </button>
       </div>
 

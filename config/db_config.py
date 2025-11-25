@@ -3,9 +3,9 @@ import psycopg2
 
 def get_connection():
     return psycopg2.connect(
-        dbname="trabajoGrado",
+        dbname="DicomFinal",
         user="postgres",
-        password="12345",
+        password="31591950",
         host="localhost",
         port="5432"
     )
