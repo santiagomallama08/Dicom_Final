@@ -99,7 +99,7 @@ export default function Viewer() {
 
     setLoadingSegment(true);
     setProgressSegment(0);
-    
+
     try {
       const form = new FormData();
       form.append("session_id", session_id);
@@ -116,9 +116,9 @@ export default function Viewer() {
 
       await progressPromise;
       const data = await response.json();
-      
+
       setProgressSegment(100);
-      
+
       setTimeout(() => {
         setSegmentacion(data);
         setIsModalOpen(true);
@@ -155,7 +155,7 @@ export default function Viewer() {
 
       await progressPromise;
       const data = await res.json();
-      
+
       setProgress3D(100);
 
       if (!res.ok) throw new Error(data?.error || "Falló la segmentación 3D");
@@ -172,9 +172,9 @@ export default function Viewer() {
       navigate(`/segmentaciones/${session_id}`);
     } catch (e) {
       setProgress3D(0);
-      Swal.fire({ 
-        icon: "error", 
-        title: "Error", 
+      Swal.fire({
+        icon: "error",
+        title: "Error",
         text: e.message,
         background: '#1f2937',
         color: '#fff',
@@ -209,7 +209,7 @@ export default function Viewer() {
 
   if (!session_id || !images.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center relative px-4 sm:px-6 py-6 sm:py-8">
         <div className="text-center bg-gray-800 border border-gray-700 rounded-xl p-8 sm:p-12 shadow-lg">
           <div className="text-6xl mb-4">⚠️</div>
           <p className="mb-6 text-gray-300 text-sm sm:text-base">No se encontraron imágenes válidas.</p>
@@ -226,7 +226,7 @@ export default function Viewer() {
 
   return (
     <div
-      className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col items-center justify-center relative px-4 sm:px-6 py-6 sm:py-8"
+      className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center relative px-4 sm:px-6 py-6 sm:py-8"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -395,11 +395,10 @@ export default function Viewer() {
         <button
           onClick={segmentarImagen}
           disabled={loadingSegment}
-          className={`w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 text-white font-semibold rounded-lg shadow-lg transition-all text-sm sm:text-base ${
-            loadingSegment
-              ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
-          }`}
+          className={`w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 text-white font-semibold rounded-lg shadow-lg transition-all text-sm sm:text-base ${loadingSegment
+            ? 'bg-gray-600 cursor-not-allowed'
+            : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
+            }`}
         >
           {loadingSegment ? "Segmentando..." : "Segmentar esta imagen"}
         </button>
@@ -407,11 +406,10 @@ export default function Viewer() {
         <button
           onClick={segmentarSerie3D}
           disabled={loading3D}
-          className={`w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 text-white font-semibold rounded-lg shadow-lg transition-all text-sm sm:text-base ${
-            loading3D
-              ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
-          }`}
+          className={`w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 text-white font-semibold rounded-lg shadow-lg transition-all text-sm sm:text-base ${loading3D
+            ? 'bg-gray-600 cursor-not-allowed'
+            : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
+            }`}
         >
           {loading3D ? "Procesando 3D..." : "Segmentar serie (3D)"}
         </button>

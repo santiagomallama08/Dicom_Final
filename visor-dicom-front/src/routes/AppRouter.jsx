@@ -17,7 +17,6 @@ import Modelado3D from '../pages/Modelado3D';
 import ExportacionSTL from '../pages/ExportacionSTL';
 import Reportes from '../pages/Reportes';
 import Pacientes from '../pages/Pacientes';
-import Configuracion from '../pages/Configuracion';
 import Segmentaciones from '../pages/Segmentaciones';
 
 const AppRouter = () => (
@@ -49,7 +48,6 @@ const AppRouter = () => (
     <Route path="/exportacion-stl" element={<ExportacionSTL />} />
     <Route path="/reportes" element={<Reportes />} />
     <Route path="/pacientes" element={<Pacientes />} />
-    <Route path="/configuracion" element={<Configuracion />} />
   </Route>
 </Routes>
 );

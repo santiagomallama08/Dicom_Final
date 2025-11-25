@@ -1,7 +1,7 @@
 // src/pages/Segmentaciones.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Trash2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { userHeaders } from "../utils/authHeaders";
 
@@ -16,8 +16,6 @@ export default function Segmentaciones() {
   const [modelos, setModelos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
-  const [exportandoId, setExportandoId] = useState(null);
-  const [progressExport, setProgressExport] = useState(0);
 
   const cargar2D = async () => {
     const res = await fetch(`${API}/historial/series/${session_id}/segmentaciones`, {
@@ -50,22 +48,6 @@ export default function Segmentaciones() {
     }
   };
 
-  const simulateExportProgress = () => {
-    return new Promise((resolve) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 15;
-        if (progress >= 90) {
-          clearInterval(interval);
-          setProgressExport(90);
-          resolve();
-        } else {
-          setProgressExport(progress);
-        }
-      }, 250);
-    });
-  };
-
   const borrar2D = async (archivodicomid) => {
     const ok = await Swal.fire({
       title: "¿Eliminar esta segmentación 2D?",
@@ -75,8 +57,6 @@ export default function Segmentaciones() {
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#d33",
-      background: '#1f2937',
-      color: '#fff',
     });
     if (!ok.isConfirmed) return;
 
@@ -92,85 +72,13 @@ export default function Segmentaciones() {
         title: "Segmentación eliminada", 
         timer: 1200, 
         showConfirmButton: false,
-        background: '#1f2937',
-        color: '#fff',
       });
     } catch {
       Swal.fire({ 
         icon: "error", 
         title: "Error", 
         text: "No se pudo eliminar la segmentación.",
-        background: '#1f2937',
-        color: '#fff',
       });
-    }
-  };
-
-  const exportarStl = async (seg3dId) => {
-    setExportandoId(seg3dId);
-    setProgressExport(0);
-
-    try {
-      const form = new FormData();
-      form.append("seg3d_id", String(seg3dId));
-
-      const headers = { ...userHeaders() };
-      delete headers["Content-Type"];
-      delete headers["content-type"];
-
-      const progressPromise = simulateExportProgress();
-
-      const res = await fetch(`${API}/series/${session_id}/export-stl`, {
-        method: "POST",
-        headers,
-        body: form,
-      });
-
-      await progressPromise;
-
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        const txt = await res.text();
-        throw new Error(txt || "Respuesta inválida del servidor");
-      }
-      
-      setProgressExport(100);
-
-      if (!res.ok) throw new Error(data?.detail || data?.error || "No se pudo exportar STL");
-
-      const nuevo = { ...data, id: data.id ?? data.modelo_id };
-      setModelos((prev) => [nuevo, ...prev]);
-
-      await Swal.fire({
-        icon: "success",
-        title: "STL generado",
-        html: `
-          <div class="text-sm text-left space-y-2">
-            <div><b>Archivo:</b> ${nuevo.path_stl}</div>
-            <div><b>Tamaño:</b> ${nuevo.file_size_bytes ?? "?"} bytes</div>
-            <div><b>Vértices:</b> ${nuevo.num_vertices ?? "?"}</div>
-            <div><b>Caras:</b> ${nuevo.num_caras ?? "?"}</div>
-          </div>
-        `,
-        confirmButtonText: "OK",
-        background: '#1f2937',
-        color: '#fff',
-        confirmButtonColor: '#3b82f6',
-      });
-    } catch (e) {
-      setProgressExport(0);
-      Swal.fire({ 
-        icon: "error", 
-        title: "Error", 
-        text: e.message || "No se pudo exportar STL",
-        background: '#1f2937',
-        color: '#fff',
-        confirmButtonColor: '#ef4444',
-      });
-    } finally {
-      setExportandoId(null);
     }
   };
 
@@ -182,8 +90,6 @@ export default function Segmentaciones() {
       confirmButtonText: "Eliminar",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#d33",
-      background: '#1f2937',
-      color: '#fff',
     });
     if (!ok.isConfirmed) return;
 
@@ -199,16 +105,12 @@ export default function Segmentaciones() {
         title: "STL eliminado", 
         timer: 1200, 
         showConfirmButton: false,
-        background: '#1f2937',
-        color: '#fff',
       });
     } catch {
       Swal.fire({ 
         icon: "error", 
         title: "Error", 
         text: "No se pudo eliminar el STL.",
-        background: '#1f2937',
-        color: '#fff',
       });
     }
   };
@@ -222,8 +124,6 @@ export default function Segmentaciones() {
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#d33",
-      background: '#1f2937',
-      color: '#fff',
     });
     if (!ok.isConfirmed) return;
 
@@ -239,16 +139,12 @@ export default function Segmentaciones() {
         title: "Segmentación 3D eliminada", 
         timer: 1200, 
         showConfirmButton: false,
-        background: '#1f2937',
-        color: '#fff',
       });
     } catch {
       Swal.fire({ 
         icon: "error", 
         title: "Error", 
         text: "No se pudo eliminar la segmentación 3D.",
-        background: '#1f2937',
-        color: '#fff',
       });
     }
   };
@@ -269,7 +165,7 @@ export default function Segmentaciones() {
   }, [session_id]);
 
   return (
-    <section className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-4 sm:p-6 lg:p-10">
+    <section className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-10">
       <div className="max-w-7xl mx-auto">
         {/* Header con botón volver */}
         <div className="mb-6 sm:mb-8">
@@ -279,14 +175,14 @@ export default function Segmentaciones() {
             title="Volver al historial"
           >
             <ArrowLeft size={18} />
-            <span className="text-sm sm:text-base">Volver</span>
+            <span className="text-sm sm:text-base">Volver al historial</span>
           </button>
 
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
             Segmentaciones de la serie
           </h1>
-          <p className="text-sm sm:text-base text-gray-300">
-            Session ID: <span className="font-mono bg-gray-700 px-2 py-1 rounded text-xs sm:text-sm">{session_id}</span>
+          <p className="text-sm sm:text-base text-gray-600">
+            Session ID: <span className="font-mono bg-gray-200 px-2 py-1 rounded text-xs sm:text-sm text-gray-800">{session_id}</span>
           </p>
         </div>
 
@@ -309,19 +205,19 @@ export default function Segmentaciones() {
           <>
             {/* Segmentaciones 2D */}
             <section className="mb-8 sm:mb-10">
-              <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-white">
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-900">
                 📊 Segmentaciones 2D
               </h2>
               {items2D.length === 0 ? (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 text-center shadow-lg">
+                <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 text-center shadow-md">
                   <div className="text-5xl mb-3">🔍</div>
-                  <p className="text-sm sm:text-base text-gray-400">No hay segmentaciones 2D disponibles.</p>
+                  <p className="text-sm sm:text-base text-gray-500">No hay segmentaciones 2D disponibles.</p>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
                   {items2D.map((it) => (
-                    <div key={it.archivodicomid} className="border border-gray-700 rounded-2xl overflow-hidden bg-gray-800 shadow-lg hover:shadow-purple-500/20 hover:border-purple-500/50 transition-all">
-                      <div className="bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center h-48 sm:h-56">
+                    <div key={it.archivodicomid} className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-md hover:shadow-lg hover:border-purple-300 transition-all">
+                      <div className="bg-gray-100 flex items-center justify-center h-48 sm:h-56">
                         {it.mask_path ? (
                           <img 
                             src={`${API}${it.mask_path}`} 
@@ -329,30 +225,30 @@ export default function Segmentaciones() {
                             className="max-h-48 sm:max-h-56 object-contain p-2" 
                           />
                         ) : (
-                          <span className="text-gray-500 text-sm">Sin máscara disponible</span>
+                          <span className="text-gray-400 text-sm">Sin máscara disponible</span>
                         )}
                       </div>
                       <div className="p-4 sm:p-5 text-sm sm:text-base">
                         <div className="grid grid-cols-2 gap-2 mb-3 text-xs sm:text-sm">
-                          <div className="bg-purple-900/30 border border-purple-500/30 px-3 py-2 rounded-lg">
-                            <span className="text-purple-400 font-semibold">Altura:</span>
-                            <div className="font-bold text-white">{it.altura} mm</div>
+                          <div className="bg-purple-50 border border-purple-200 px-3 py-2 rounded-lg">
+                            <span className="text-purple-700 font-semibold">Altura:</span>
+                            <div className="font-bold text-gray-900">{it.altura} mm</div>
                           </div>
-                          <div className="bg-indigo-900/30 border border-indigo-500/30 px-3 py-2 rounded-lg">
-                            <span className="text-indigo-400 font-semibold">Longitud:</span>
-                            <div className="font-bold text-white">{it.longitud} mm</div>
+                          <div className="bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-lg">
+                            <span className="text-indigo-700 font-semibold">Longitud:</span>
+                            <div className="font-bold text-gray-900">{it.longitud} mm</div>
                           </div>
-                          <div className="bg-blue-900/30 border border-blue-500/30 px-3 py-2 rounded-lg">
-                            <span className="text-blue-400 font-semibold">Ancho:</span>
-                            <div className="font-bold text-white">{it.ancho} mm</div>
+                          <div className="bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg">
+                            <span className="text-blue-700 font-semibold">Ancho:</span>
+                            <div className="font-bold text-gray-900">{it.ancho} mm</div>
                           </div>
-                          <div className="bg-green-900/30 border border-green-500/30 px-3 py-2 rounded-lg">
-                            <span className="text-green-400 font-semibold">Volumen:</span>
-                            <div className="font-bold text-white">{it.volumen} {it.unidad || "mm³"}</div>
+                          <div className="bg-green-50 border border-green-200 px-3 py-2 rounded-lg">
+                            <span className="text-green-700 font-semibold">Volumen:</span>
+                            <div className="font-bold text-gray-900">{it.volumen} {it.unidad || "mm³"}</div>
                           </div>
                         </div>
                         <div className="mb-3 text-xs sm:text-sm">
-                          <span className="text-gray-400 font-semibold">Tipo:</span> <span className="text-gray-200">{it.tipoprotesis}</span>
+                          <span className="text-gray-600 font-semibold">Tipo:</span> <span className="text-gray-800">{it.tipoprotesis}</span>
                         </div>
                         <button
                           onClick={() => borrar2D(it.archivodicomid)}
@@ -370,27 +266,27 @@ export default function Segmentaciones() {
 
             {/* Segmentaciones 3D */}
             <section className="mb-8 sm:mb-10">
-              <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-white">
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-900">
                 🧊 Segmentaciones 3D
               </h2>
               {items3D.length === 0 ? (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 text-center shadow-lg">
+                <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 text-center shadow-md">
                   <div className="text-5xl mb-3">🎯</div>
-                  <p className="text-sm sm:text-base text-gray-400">No hay segmentaciones 3D disponibles.</p>
+                  <p className="text-sm sm:text-base text-gray-500">No hay segmentaciones 3D disponibles.</p>
                 </div>
               ) : (
                 <div className="space-y-4 sm:space-y-6">
                   {items3D.map((s3d) => (
-                    <div key={s3d.id} className="border border-gray-700 rounded-2xl overflow-hidden bg-gray-800 shadow-lg hover:border-purple-500/50 transition-all">
+                    <div key={s3d.id} className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-md hover:border-purple-300 transition-all">
                       {/* Thumbnails */}
-                      <div className="grid grid-cols-3 gap-2 sm:gap-3 p-3 sm:p-4 bg-gradient-to-br from-gray-900 to-gray-800">
-                        <div className="aspect-square bg-black border border-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3 p-3 sm:p-4 bg-gray-50">
+                        <div className="aspect-square bg-black border border-gray-300 rounded-lg flex items-center justify-center overflow-hidden">
                           <img src={`${API}${s3d.thumb_axial}`} alt="axial" className="w-full h-full object-contain" />
                         </div>
-                        <div className="aspect-square bg-black border border-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
+                        <div className="aspect-square bg-black border border-gray-300 rounded-lg flex items-center justify-center overflow-hidden">
                           <img src={`${API}${s3d.thumb_sagittal}`} alt="sagittal" className="w-full h-full object-contain" />
                         </div>
-                        <div className="aspect-square bg-black border border-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
+                        <div className="aspect-square bg-black border border-gray-300 rounded-lg flex items-center justify-center overflow-hidden">
                           <img src={`${API}${s3d.thumb_coronal}`} alt="coronal" className="w-full h-full object-contain" />
                         </div>
                       </div>
@@ -398,81 +294,42 @@ export default function Segmentaciones() {
                       {/* Info y acciones */}
                       <div className="p-4 sm:p-5">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs sm:text-sm">
-                          <div className="bg-purple-900/30 border border-purple-500/30 px-3 py-2 rounded-lg">
-                            <span className="text-purple-400 font-semibold">Volumen:</span>
-                            <div className="font-bold text-white">{Math.round(s3d.volume_mm3)} mm³</div>
+                          <div className="bg-purple-50 border border-purple-200 px-3 py-2 rounded-lg">
+                            <span className="text-purple-700 font-semibold">Volumen:</span>
+                            <div className="font-bold text-gray-900">{Math.round(s3d.volume_mm3)} mm³</div>
                           </div>
                           {s3d.surface_mm2 != null && (
-                            <div className="bg-indigo-900/30 border border-indigo-500/30 px-3 py-2 rounded-lg">
-                              <span className="text-indigo-400 font-semibold">Superficie:</span>
-                              <div className="font-bold text-white">{Math.round(s3d.surface_mm2)} mm²</div>
+                            <div className="bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-lg">
+                              <span className="text-indigo-700 font-semibold">Superficie:</span>
+                              <div className="font-bold text-gray-900">{Math.round(s3d.surface_mm2)} mm²</div>
                             </div>
                           )}
-                          <div className="bg-blue-900/30 border border-blue-500/30 px-3 py-2 rounded-lg sm:col-span-2">
-                            <span className="text-blue-400 font-semibold">Dimensiones (BBox):</span>
-                            <div className="font-bold text-white">
+                          <div className="bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg sm:col-span-2">
+                            <span className="text-blue-700 font-semibold">Dimensiones (BBox):</span>
+                            <div className="font-bold text-gray-900">
                               {`${(s3d.bbox_x_mm).toFixed(1)} × ${(s3d.bbox_y_mm).toFixed(1)} × ${(s3d.bbox_z_mm).toFixed(1)} mm`}
                             </div>
                           </div>
-                          <div className="bg-green-900/30 border border-green-500/30 px-3 py-2 rounded-lg">
-                            <span className="text-green-400 font-semibold">Slices:</span>
-                            <div className="font-bold text-white">{s3d.n_slices}</div>
+                          <div className="bg-green-50 border border-green-200 px-3 py-2 rounded-lg">
+                            <span className="text-green-700 font-semibold">Slices:</span>
+                            <div className="font-bold text-gray-900">{s3d.n_slices}</div>
                           </div>
                         </div>
 
-                        {/* Barra de progreso para exportación */}
-                        {exportandoId === s3d.id && (
-                          <div className="mb-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs sm:text-sm font-medium text-gray-300">
-                                Exportando STL...
-                              </span>
-                              <span className="text-xs sm:text-sm font-semibold text-purple-400">
-                                {Math.round(progressExport)}%
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                              <div
-                                className="bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] h-2.5 rounded-full transition-all duration-300 ease-out relative"
-                                style={{ width: `${progressExport}%` }}
-                              >
-                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                          <button
-                            onClick={() => exportarStl(s3d.id)}
-                            disabled={exportandoId === s3d.id}
-                            className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg text-white text-sm font-medium transition-all ${
-                              exportandoId === s3d.id
-                                ? 'bg-gray-600 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] hover:opacity-90'
-                            }`}
-                          >
-                            {exportandoId === s3d.id ? (
-                              <>
-                                <Loader2 size={16} className="animate-spin" />
-                                Exportando...
-                              </>
-                            ) : (
-                              <>
-                                <Download size={16} />
-                                Exportar STL
-                              </>
-                            )}
-                          </button>
-
+                        {/* Solo botón de borrar - NO exportar */}
+                        <div className="flex gap-3">
                           <button
                             onClick={() => borrar3D(s3d.id)}
-                            disabled={exportandoId === s3d.id}
-                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium disabled:opacity-50"
+                            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium"
                           >
                             <Trash2 size={16} />
-                            Borrar 3D
+                            Borrar segmentación 3D
                           </button>
+                        </div>
+
+                        {/* Mensaje informativo */}
+                        <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs sm:text-sm text-blue-800">
+                          💡 Para generar el modelo STL, ve al módulo <strong>"Exportación STL"</strong>
                         </div>
                       </div>
                     </div>
@@ -481,36 +338,42 @@ export default function Segmentaciones() {
               )}
             </section>
 
-            {/* Modelos STL */}
+            {/* Modelos STL (solo información y borrado) */}
             <section className="mb-8 sm:mb-10">
-              <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-white">
-                📦 Modelos STL
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-900">
+                📦 Modelos STL generados
               </h2>
               {modelos.length === 0 ? (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 text-center shadow-lg">
+                <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 text-center shadow-md">
                   <div className="text-5xl mb-3">🏗️</div>
-                  <p className="text-sm sm:text-base text-gray-400">No hay modelos STL generados aún.</p>
+                  <p className="text-sm sm:text-base text-gray-500 mb-4">No hay modelos STL generados para esta serie.</p>
+                  <button
+                    onClick={() => navigate("/exportacion-stl")}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#007AFF] via-[#C633FF] to-[#FF4D00] text-white rounded-lg font-semibold hover:opacity-90 transition-opacity shadow-lg"
+                  >
+                    🚀 Ir a Exportación STL
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3 sm:space-y-4">
                   {modelos.map((m) => (
-                    <div key={m.id} className="border border-gray-700 rounded-2xl p-4 sm:p-5 bg-gray-800 shadow-lg hover:border-purple-500/50 transition-all">
+                    <div key={m.id} className="border border-gray-200 rounded-2xl p-4 sm:p-5 bg-white shadow-md hover:border-purple-300 transition-all">
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 text-xs sm:text-sm">
-                        <div className="bg-purple-900/30 border border-purple-500/30 px-3 py-2 rounded-lg lg:col-span-2">
-                          <span className="text-purple-400 font-semibold">Archivo:</span>
-                          <div className="font-mono text-xs text-gray-300 break-all mt-1">{m.path_stl}</div>
+                        <div className="bg-purple-50 border border-purple-200 px-3 py-2 rounded-lg lg:col-span-2">
+                          <span className="text-purple-700 font-semibold">Archivo:</span>
+                          <div className="font-mono text-xs text-gray-700 break-all mt-1">{m.path_stl}</div>
                         </div>
-                        <div className="bg-indigo-900/30 border border-indigo-500/30 px-3 py-2 rounded-lg">
-                          <span className="text-indigo-400 font-semibold">Vértices:</span>
-                          <div className="font-bold text-white">{m.num_vertices ?? "?"}</div>
+                        <div className="bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-lg">
+                          <span className="text-indigo-700 font-semibold">Vértices:</span>
+                          <div className="font-bold text-gray-900">{m.num_vertices ?? "?"}</div>
                         </div>
-                        <div className="bg-blue-900/30 border border-blue-500/30 px-3 py-2 rounded-lg">
-                          <span className="text-blue-400 font-semibold">Caras:</span>
-                          <div className="font-bold text-white">{m.num_caras ?? "?"}</div>
+                        <div className="bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg">
+                          <span className="text-blue-700 font-semibold">Caras:</span>
+                          <div className="font-bold text-gray-900">{m.num_caras ?? "?"}</div>
                         </div>
-                        <div className="bg-green-900/30 border border-green-500/30 px-3 py-2 rounded-lg sm:col-span-2 lg:col-span-1">
-                          <span className="text-green-400 font-semibold">Tamaño:</span>
-                          <div className="font-bold text-white">
+                        <div className="bg-green-50 border border-green-200 px-3 py-2 rounded-lg sm:col-span-2 lg:col-span-1">
+                          <span className="text-green-700 font-semibold">Tamaño:</span>
+                          <div className="font-bold text-gray-900">
                             {m.file_size_bytes ? `${(m.file_size_bytes / 1024).toFixed(2)} KB` : "? bytes"}
                           </div>
                         </div>
@@ -518,7 +381,7 @@ export default function Segmentaciones() {
 
                       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <a
-                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:opacity-90 text-white transition-opacity text-sm font-medium shadow-lg"
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:opacity-90 text-white transition-opacity text-sm font-medium shadow-lg"
                           href={`${API}${m.path_stl}`}
                           download
                         >
@@ -528,7 +391,7 @@ export default function Segmentaciones() {
 
                         <button
                           onClick={() => borrarModelo(m.id)}
-                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium"
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium"
                         >
                           <Trash2 size={16} />
                           Borrar
@@ -542,8 +405,8 @@ export default function Segmentaciones() {
 
             {/* Nota informativa */}
             {(items2D.length + items3D.length > 0) && (
-              <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 sm:p-6 text-center">
-                <p className="text-xs sm:text-sm text-blue-300">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 sm:p-6 text-center">
+                <p className="text-xs sm:text-sm text-blue-800">
                   💡 Para eliminar la serie completa, primero borra todas las segmentaciones y modelos STL.
                 </p>
               </div>

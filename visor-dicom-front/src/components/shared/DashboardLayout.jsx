@@ -26,7 +26,6 @@ const sidebarItems = [
   { to: '/exportacion-stl', icon: FileDown, label: 'Exportación STL' },
   { to: '/reportes', icon: FileText, label: 'Reportes' },
   { to: '/pacientes', icon: UserCircle, label: 'Pacientes' },
-  { to: '/configuracion', icon: Settings, label: 'Configuración' },
 ];
 
 const SidebarItem = ({ to, icon: Icon, label }) => (
