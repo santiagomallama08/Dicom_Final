@@ -1,11 +1,10 @@
-#config/db_config.py
 import psycopg2
 
 def get_connection():
     return psycopg2.connect(
-        dbname="DicomFinal",
+        dbname="trabajoGrado",
         user="postgres",
-        password="31591950",
+        password="12345",
         host="localhost",
         port="5432"
     )

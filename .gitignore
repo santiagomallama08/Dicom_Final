@@ -26,29 +26,3 @@ dist/
 # Configuración de IDEs
 .vscode/
 .idea/
-
-# Ignorar todos los archivos dentro de outputs/
-outputs/*
-
-# Ignorar carpeta de imágenes generadas
-static/segmentations
-
-# Ignorar carpeta de imágenes generadas
-api/static/segmentations
-
-# Ignorar carpeta de imágenes generadas
-api/static/reportes
-
-# Ignorar carpeta de imágenes generadas
-api/static/series/
-
-# Ignorar carpeta de imágenes generadas
-api/static/segmentations3d
-
-#Ignorea los uploads
-uploads
-
-# Ignorar carpeta de imágenes generadas
-api/static/models/
- 
-
